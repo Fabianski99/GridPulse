@@ -1479,3 +1479,16 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+.nav-links {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.nav-links::-webkit-scrollbar {
+  display: none;
+}
+
+.nav-button {
+  flex-shrink: 0;
+}

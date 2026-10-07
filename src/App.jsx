@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import Circuits from "./Circuits";
+import Telemetry from "./Telemetry";
 
 const API = "https://api.jolpi.ca/ergast/f1";
 
@@ -1070,6 +1071,18 @@ export default function App() {
             >
               Circuitos
             </button>
+            <button
+              className={`nav-button ${
+                page === "telemetry"
+                  ? "active"
+                  : ""
+              }`}
+              onClick={() =>
+                navigate("telemetry")
+              }
+            >
+              Telemetría
+            </button>
           </div>
         </nav>
       </header>
@@ -1078,8 +1091,10 @@ export default function App() {
         <Home />
       ) : page === "seasons" ? (
         <Seasons />
-      ) : (
+      ) : page === "circuits" ? (
         <Circuits />
+      ) : (
+        <Telemetry />
       )}
 
       <div className="page footer-page">

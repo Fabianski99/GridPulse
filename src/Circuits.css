@@ -616,6 +616,185 @@
   animation-delay: 0.3s;
 }
 
+/* ============================================================
+   ANOTACIONES DEL CIRCUITO
+============================================================ */
+
+.circuit-annotations {
+  pointer-events: none;
+
+  opacity: 0;
+
+  animation:
+    circuit-annotations-in
+    0.45s ease
+    0.65s forwards;
+}
+
+@keyframes circuit-annotations-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+
+/* ============================================================
+   ETIQUETAS S1 / S2 / S3
+============================================================ */
+
+.circuit-sector-tag rect {
+  fill: rgba(5, 8, 11, 0.92);
+
+  stroke-width: 3;
+
+  filter:
+    drop-shadow(
+      0 0 8px
+      rgba(0, 0, 0, 0.6)
+    );
+}
+
+.circuit-sector-tag text {
+  font-size: 22px;
+
+  font-weight: 950;
+
+  letter-spacing: 1px;
+
+  fill: #ffffff;
+}
+
+.circuit-sector-tag--s1 rect {
+  stroke: #00f5d4;
+}
+
+.circuit-sector-tag--s1 text {
+  fill: #00f5d4;
+}
+
+.circuit-sector-tag--s2 rect {
+  stroke: #a06bff;
+}
+
+.circuit-sector-tag--s2 text {
+  fill: #b88cff;
+}
+
+.circuit-sector-tag--s3 rect {
+  stroke: #ff9f43;
+}
+
+.circuit-sector-tag--s3 text {
+  fill: #ffad59;
+}
+
+
+/* ============================================================
+   META
+============================================================ */
+
+.circuit-start-finish line {
+  stroke: #ffffff;
+  stroke-width: 7;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.45));
+}
+
+.circuit-start-finish rect {
+  fill: #ffffff;
+}
+
+.circuit-start-finish rect:nth-of-type(even) {
+  fill: #11151b;
+}
+
+.circuit-start-finish text {
+  fill: #ffffff;
+  font-size: 24px;
+  font-weight: 1000;
+  letter-spacing: 2.5px;
+  paint-order: stroke;
+  stroke: #080b0e;
+  stroke-width: 6px;
+}
+
+
+/* ============================================================
+   NÚMEROS DE CURVA
+============================================================ */
+
+.circuit-corner-marker circle {
+  fill: #080b0f;
+
+  stroke: rgba(
+    255,
+    255,
+    255,
+    0.78
+  );
+
+  stroke-width: 3;
+
+  filter:
+    drop-shadow(
+      0 0 6px
+      rgba(
+        0,
+        0,
+        0,
+        0.85
+      )
+    );
+}
+
+.circuit-corner-marker text {
+  fill: #f5f7fa;
+
+  font-size: 20px;
+
+  font-weight: 950;
+
+  paint-order: stroke;
+
+  stroke: #080b0f;
+
+  stroke-width: 3px;
+}
+.circuit-speed-trap > circle {
+  fill: #ff3bd4;
+  stroke: #ffffff;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 10px rgba(255, 59, 212, 0.55));
+}
+
+.circuit-speed-trap > line {
+  stroke: #ff3bd4;
+  stroke-width: 3;
+}
+
+.circuit-speed-trap g rect {
+  fill: rgba(28, 8, 30, 0.96);
+  stroke: #ff3bd4;
+  stroke-width: 2;
+}
+
+.circuit-speed-trap-title {
+  fill: #ff55de;
+  font-size: 14px;
+  font-weight: 950;
+  letter-spacing: 1px;
+}
+
+.circuit-speed-trap-speed {
+  fill: #ffffff;
+  font-size: 16px;
+  font-weight: 900;
+}
+
 @keyframes draw-circuit-sector {
   to {
     stroke-dashoffset: 0;

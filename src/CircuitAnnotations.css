@@ -1,0 +1,178 @@
+/* ============================================================
+   GRIDPULSE · ANOTACIONES DEL CIRCUITO
+============================================================ */
+
+.circuit-annotations {
+  pointer-events: none;
+  opacity: 0;
+  animation:
+    circuit-annotations-in
+    0.36s ease
+    0.34s forwards;
+}
+
+@keyframes circuit-annotations-in {
+  to {
+    opacity: 1;
+  }
+}
+
+/* ============================================================
+   S1 / S2 / S3
+============================================================ */
+
+.circuit-sector-tag rect {
+  fill: rgba(5, 8, 11, 0.94);
+  stroke-width: 3.2;
+  filter:
+    drop-shadow(
+      0 0 8px
+      rgba(
+        0,
+        0,
+        0,
+        0.7
+      )
+    );
+}
+
+.circuit-sector-tag text {
+  fill: #ffffff;
+  font-size: 23px;
+  font-weight: 950;
+  letter-spacing: 1px;
+  paint-order: stroke;
+  stroke: #05080b;
+  stroke-width: 2px;
+}
+
+.circuit-sector-tag--s1 rect {
+  stroke: #00f5d4;
+}
+
+.circuit-sector-tag--s1 text {
+  fill: #00f5d4;
+}
+
+.circuit-sector-tag--s2 rect {
+  stroke: #a06bff;
+}
+
+.circuit-sector-tag--s2 text {
+  fill: #b88cff;
+}
+
+.circuit-sector-tag--s3 rect {
+  stroke: #ff9f43;
+}
+
+.circuit-sector-tag--s3 text {
+  fill: #ffad59;
+}
+
+/* ============================================================
+   META
+============================================================ */
+
+.circuit-start-finish line {
+  stroke: #ffffff;
+  stroke-width: 8;
+  stroke-linecap: round;
+  filter:
+    drop-shadow(
+      0 0 10px
+      rgba(
+        255,
+        255,
+        255,
+        0.45
+      )
+    );
+}
+
+.circuit-start-finish rect {
+  fill: #ffffff;
+  stroke: none;
+}
+
+.circuit-start-finish
+  rect:nth-of-type(even) {
+  fill: #0a0d11;
+}
+
+.circuit-start-finish text {
+  fill: #ffffff;
+  font-size: 27px;
+  font-weight: 950;
+  letter-spacing: 2.5px;
+  paint-order: stroke;
+  stroke: #07090c;
+  stroke-width: 7px;
+}
+
+/* ============================================================
+   NÚMEROS DE CURVA
+============================================================ */
+
+.circuit-corner-marker circle {
+  fill: rgba(
+    7,
+    10,
+    14,
+    0.97
+  );
+
+  stroke: rgba(
+    255,
+    255,
+    255,
+    0.84
+  );
+
+  stroke-width: 3.2;
+
+  filter:
+    drop-shadow(
+      0 0 5px
+      rgba(
+        0,
+        0,
+        0,
+        0.9
+      )
+    )
+    drop-shadow(
+      0 0 8px
+      rgba(
+        255,
+        255,
+        255,
+        0.08
+      )
+    );
+}
+
+.circuit-corner-marker text {
+  fill: #f6f8fb;
+  font-size: 20px;
+  font-weight: 950;
+  paint-order: stroke;
+  stroke: #07090c;
+  stroke-width: 3px;
+}
+
+@media (
+  max-width: 760px
+) {
+  .circuit-corner-marker text {
+    font-size: 18px;
+  }
+
+  .circuit-start-finish text {
+    font-size: 24px;
+  }
+
+  .circuit-sector-tag text {
+    font-size: 20px;
+  }
+}

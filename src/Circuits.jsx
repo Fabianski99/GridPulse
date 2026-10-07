@@ -926,7 +926,9 @@ function CircuitTrack({ circuit, expanded }) {
   if (hasSegmentedTrack) {
     return (
       <SegmentedCircuit
+        circuitId={circuit.id}
         circuitName={circuit.name}
+        cornerCount={circuit.corners}
         expanded={expanded}
         track={segmentedTrack}
       />
