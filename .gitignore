@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+.fastf1-cache/
+node_modules/
+dist/
+.DS_Store

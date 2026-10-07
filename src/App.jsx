@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
+import Circuits from "./Circuits";
 
 const API = "https://api.jolpi.ca/ergast/f1";
 
@@ -1037,7 +1038,9 @@ export default function App() {
                   ? "active"
                   : ""
               }`}
-              onClick={() => navigate("home")}
+              onClick={() =>
+                navigate("home")
+              }
             >
               Inicio
             </button>
@@ -1054,14 +1057,29 @@ export default function App() {
             >
               Temporadas
             </button>
+
+            <button
+              className={`nav-button ${
+                page === "circuits"
+                  ? "active"
+                  : ""
+              }`}
+              onClick={() =>
+                navigate("circuits")
+              }
+            >
+              Circuitos
+            </button>
           </div>
         </nav>
       </header>
 
       {page === "home" ? (
         <Home />
-      ) : (
+      ) : page === "seasons" ? (
         <Seasons />
+      ) : (
+        <Circuits />
       )}
 
       <div className="page footer-page">
