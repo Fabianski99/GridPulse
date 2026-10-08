@@ -1,0 +1,1278 @@
+/* ============================================================
+   GRIDPULSE · RESULTADOS TEMPORADA ACTUAL
+============================================================ */
+
+.current-season-results {
+  min-width: 0;
+
+  overflow: hidden;
+
+  border: 1px solid
+    rgba(
+      255,
+      255,
+      255,
+      0.09
+    );
+
+  border-radius: 22px;
+
+  background:
+    radial-gradient(
+      circle at 100% 0%,
+      rgba(
+        160,
+        107,
+        255,
+        0.07
+      ),
+      transparent 38%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(
+        14,
+        17,
+        22,
+        0.99
+      ),
+      rgba(
+        8,
+        10,
+        13,
+        0.99
+      )
+    );
+
+  box-shadow:
+    0 18px 48px
+      rgba(
+        0,
+        0,
+        0,
+        0.2
+      );
+
+  contain:
+    layout
+    style;
+}
+
+
+/* ============================================================
+   CABECERA
+============================================================ */
+
+.current-season-results-head {
+  min-height: 88px;
+
+  display: flex;
+  align-items: center;
+  justify-content:
+    space-between;
+
+  gap: 20px;
+
+  padding:
+    18px 20px;
+
+  border-bottom:
+    1px solid
+    rgba(
+      255,
+      255,
+      255,
+      0.06
+    );
+}
+
+
+.current-season-results-head
+  > div:first-child
+  > span {
+  display: block;
+
+  color: #00f5d4;
+
+  font-size: 9px;
+  font-weight: 950;
+
+  letter-spacing:
+    1.3px;
+
+  text-transform:
+    uppercase;
+}
+
+
+.current-season-results-head
+  h3 {
+  margin:
+    5px 0 0;
+
+  font-size: 23px;
+  line-height: 1;
+
+  letter-spacing:
+    -0.7px;
+}
+
+
+.current-season-results-head
+  p {
+  margin:
+    6px 0 0;
+
+  color: #727d8d;
+
+  font-size: 11px;
+}
+
+
+.current-results-live {
+  padding:
+    7px 10px;
+
+  border:
+    1px solid
+    rgba(
+      0,
+      245,
+      212,
+      0.18
+    );
+
+  border-radius:
+    999px;
+
+  color: #00f5d4;
+
+  background:
+    rgba(
+      0,
+      245,
+      212,
+      0.055
+    );
+
+  font-size: 8px;
+  font-weight: 950;
+
+  letter-spacing:
+    0.8px;
+
+  text-transform:
+    uppercase;
+}
+
+
+/* ============================================================
+   LISTA
+============================================================ */
+
+.current-results-list {
+  display: flex;
+
+  flex-direction: column;
+}
+
+
+.current-race-result-wrapper {
+  border-bottom:
+    1px solid
+    rgba(
+      255,
+      255,
+      255,
+      0.055
+    );
+}
+
+
+.current-race-result-card {
+  width: 100%;
+
+  display: grid;
+
+  grid-template-columns:
+    minmax(
+      150px,
+      1.15fr
+    )
+    minmax(
+      230px,
+      1.5fr
+    )
+    22px;
+
+  align-items: center;
+
+  gap: 15px;
+
+  padding:
+    13px 17px;
+
+  border: 0;
+
+  color: inherit;
+
+  background:
+    transparent;
+
+  text-align: left;
+
+  cursor: pointer;
+
+  transition:
+    background 0.2s ease;
+}
+
+
+.current-race-result-card:hover {
+  background:
+    rgba(
+      255,
+      255,
+      255,
+      0.028
+    );
+}
+
+
+.current-race-result-wrapper.is-open
+  .current-race-result-card {
+  background:
+    rgba(
+      0,
+      245,
+      212,
+      0.025
+    );
+}
+
+
+/* ============================================================
+   NOMBRE DE CARRERA
+============================================================ */
+
+.current-race-result-info {
+  min-width: 0;
+}
+
+
+.current-race-result-meta {
+  display: flex;
+  align-items: center;
+
+  gap: 7px;
+
+  margin-bottom: 5px;
+
+  color: #687384;
+
+  font-size: 9px;
+  font-weight: 800;
+}
+
+
+.current-race-result-meta
+  .country-flag {
+  width: 17px;
+  height: 12px;
+}
+
+
+.current-race-result-info
+  > strong {
+  display: block;
+
+  overflow: hidden;
+
+  color: #f3f6fa;
+
+  font-size: 13px;
+  font-weight: 900;
+
+  text-overflow:
+    ellipsis;
+
+  white-space: nowrap;
+}
+
+
+/* ============================================================
+   PODIO
+============================================================ */
+
+.current-race-podium {
+  min-width: 0;
+
+  display: grid;
+
+  grid-template-columns:
+    repeat(
+      3,
+      minmax(
+        0,
+        1fr
+      )
+    );
+
+  gap: 5px;
+}
+
+
+.current-podium-driver {
+  min-width: 0;
+
+  display: grid;
+
+  grid-template-columns:
+    16px
+    3px
+    auto;
+
+  align-items: center;
+
+  column-gap: 6px;
+
+  padding:
+    6px 7px;
+
+  border-radius:
+    8px;
+
+  background:
+    rgba(
+      255,
+      255,
+      255,
+      0.025
+    );
+}
+
+
+.current-podium-position {
+  color: #697485;
+
+  font-size: 9px;
+  font-weight: 900;
+
+  text-align: center;
+}
+
+
+.current-podium-strip {
+  width: 3px;
+  height: 23px;
+
+  border-radius:
+    999px;
+}
+
+
+.current-podium-driver
+  strong {
+  color: #f5f7fa;
+
+  font-size: 12px;
+  font-weight: 950;
+}
+
+
+.current-podium-team {
+  grid-column:
+    3;
+
+  display: block;
+
+  overflow: hidden;
+
+  margin-top: -2px;
+
+  color: #697485;
+
+  font-size: 7px;
+
+  text-overflow:
+    ellipsis;
+
+  white-space: nowrap;
+}
+
+
+.current-race-result-arrow {
+  color: #6b7585;
+
+  font-size: 18px;
+  font-weight: 300;
+
+  text-align: right;
+}
+
+
+/* ============================================================
+   MÁS CARRERAS
+============================================================ */
+
+.current-results-hidden-count {
+  padding:
+    10px 18px 0;
+
+  color: #626d7d;
+
+  font-size: 9px;
+}
+
+
+.current-results-toggle {
+  width: 100%;
+
+  display: flex;
+  align-items: center;
+  justify-content:
+    space-between;
+
+  padding:
+    14px 18px;
+
+  border: 0;
+
+  border-top:
+    1px solid
+    rgba(
+      255,
+      255,
+      255,
+      0.055
+    );
+
+  color: #8390a2;
+
+  background:
+    rgba(
+      255,
+      255,
+      255,
+      0.014
+    );
+
+  font-size: 9px;
+  font-weight: 900;
+
+  letter-spacing:
+    0.75px;
+
+  text-transform:
+    uppercase;
+
+  cursor: pointer;
+
+  transition:
+    color 0.2s ease,
+    background 0.2s ease;
+}
+
+
+.current-results-toggle:hover {
+  color: #00f5d4;
+
+  background:
+    rgba(
+      0,
+      245,
+      212,
+      0.025
+    );
+}
+
+
+/* ============================================================
+   RESULTADO COMPLETO
+============================================================ */
+
+.current-result-detail {
+  margin:
+    15px;
+
+  overflow: hidden;
+
+  border:
+    1px solid
+    rgba(
+      0,
+      245,
+      212,
+      0.13
+    );
+
+  border-radius:
+    16px;
+
+  background:
+    rgba(
+      4,
+      7,
+      10,
+      0.72
+    );
+
+  animation:
+    current-result-in
+    0.25s ease;
+}
+
+
+@keyframes current-result-in {
+  from {
+    opacity: 0;
+
+    transform:
+      translateY(
+        6px
+      );
+  }
+
+  to {
+    opacity: 1;
+
+    transform:
+      translateY(
+        0
+      );
+  }
+}
+
+
+.current-result-detail-head {
+  display: flex;
+
+  align-items:
+    flex-start;
+
+  justify-content:
+    space-between;
+
+  gap: 16px;
+
+  padding:
+    16px;
+
+  border-bottom:
+    1px solid
+    rgba(
+      255,
+      255,
+      255,
+      0.06
+    );
+}
+
+
+.current-result-detail-eyebrow {
+  display: flex;
+  align-items: center;
+
+  gap: 7px;
+
+  color: #00f5d4;
+
+  font-size: 9px;
+  font-weight: 900;
+
+  letter-spacing:
+    0.8px;
+
+  text-transform:
+    uppercase;
+}
+
+
+.current-result-detail-eyebrow
+  .country-flag {
+  width: 18px;
+  height: 13px;
+}
+
+
+.current-result-detail-head
+  h4 {
+  margin:
+    7px 0 0;
+
+  font-size: 20px;
+}
+
+
+.current-result-detail-head
+  p {
+  margin:
+    5px 0 0;
+
+  color: #6f7a8a;
+
+  font-size: 10px;
+}
+
+
+.current-result-close {
+  padding:
+    7px 10px;
+
+  border:
+    1px solid
+    rgba(
+      255,
+      255,
+      255,
+      0.08
+    );
+
+  border-radius:
+    9px;
+
+  color: #8d98a8;
+
+  background:
+    rgba(
+      255,
+      255,
+      255,
+      0.025
+    );
+
+  font-size: 8px;
+  font-weight: 900;
+
+  text-transform:
+    uppercase;
+
+  cursor: pointer;
+}
+
+
+/* ============================================================
+   CABECERA TABLA
+============================================================ */
+
+.current-result-table-head,
+.current-result-row {
+  display: grid;
+
+  grid-template-columns:
+    46px
+    minmax(
+      145px,
+      1.4fr
+    )
+    minmax(
+      110px,
+      1fr
+    )
+    55px
+    48px;
+
+  align-items: center;
+
+  gap: 10px;
+}
+
+
+.current-result-table-head {
+  padding:
+    9px 14px;
+
+  color: #596575;
+
+  font-size: 8px;
+  font-weight: 900;
+
+  letter-spacing:
+    0.6px;
+
+  text-transform:
+    uppercase;
+}
+
+
+/* ============================================================
+   FILAS
+============================================================ */
+
+.current-result-row {
+  min-height: 49px;
+
+  padding:
+    8px 14px;
+
+  border-top:
+    1px solid
+    rgba(
+      255,
+      255,
+      255,
+      0.045
+    );
+}
+
+
+.current-result-row.podium {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(
+        0,
+        245,
+        212,
+        0.025
+      ),
+      transparent 60%
+    );
+}
+
+
+.current-result-position {
+  color: #718094;
+
+  font-size: 11px;
+  font-weight: 900;
+}
+
+
+.current-result-driver {
+  min-width: 0;
+
+  display: flex;
+  align-items: center;
+
+  gap: 9px;
+}
+
+
+.current-result-team-strip {
+  flex: 0 0 auto;
+
+  width: 3px;
+  height: 30px;
+
+  border-radius:
+    999px;
+}
+
+
+.current-result-driver
+  strong {
+  display: block;
+
+  color: #f5f7fa;
+
+  font-size: 13px;
+  font-weight: 950;
+}
+
+
+.current-result-driver
+  small {
+  display: block;
+
+  overflow: hidden;
+
+  margin-top: 2px;
+
+  color: #657181;
+
+  font-size: 8px;
+
+  text-overflow:
+    ellipsis;
+
+  white-space: nowrap;
+}
+
+
+.current-result-constructor {
+  overflow: hidden;
+
+  color: #7d899a;
+
+  font-size: 10px;
+
+  text-overflow:
+    ellipsis;
+
+  white-space: nowrap;
+}
+
+
+.current-result-grid {
+  color: #667182;
+
+  font-size: 10px;
+
+  text-align: center;
+}
+
+
+.current-result-points {
+  color: #ffffff;
+
+  font-size: 12px;
+  font-weight: 900;
+
+  text-align: right;
+}
+
+
+/* ============================================================
+   LAYOUT: PRÓXIMO GP + RESULTADOS
+============================================================ */
+
+.season-now-grid {
+  display: grid;
+
+  grid-template-columns:
+    minmax(
+      0,
+      1.08fr
+    )
+    minmax(
+      420px,
+      0.92fr
+    );
+
+  gap: 18px;
+
+  align-items:
+    start;
+}
+
+
+/*
+  Antes la tarjeta de la
+  próxima carrera ocupaba
+  el 52% de toda la sección.
+
+  Ahora su columna ya mide
+  aproximadamente la mitad
+  de la pantalla, por lo que
+  ocupa el 100% de ella.
+*/
+
+.season-now-grid
+  .featured-race-stage {
+  width: 100%;
+
+  min-height: 0;
+}
+
+
+.season-now-grid
+  .featured-race-card,
+.season-now-grid
+  .featured-race-card:hover,
+.season-now-grid
+  .featured-race-card:focus {
+  width: 100%;
+}
+
+
+/*
+  Seguimos conservando la
+  expansión vertical del
+  programa del fin de semana.
+*/
+
+.season-now-grid
+  .featured-race-card:hover,
+.season-now-grid
+  .featured-race-card:focus {
+  transform:
+    translateY(
+      -2px
+    );
+}
+
+
+/* ============================================================
+   VACÍO
+============================================================ */
+
+.current-results-empty {
+  padding:
+    30px 20px;
+
+  color: #687485;
+
+  font-size: 12px;
+}
+
+
+/* ============================================================
+   RESPONSIVE
+============================================================ */
+
+@media (
+  max-width: 1180px
+) {
+  .season-now-grid {
+    grid-template-columns:
+      1fr;
+  }
+
+
+  .current-season-results {
+    width: 100%;
+  }
+}
+
+
+@media (
+  max-width: 760px
+) {
+  .current-race-result-card {
+    grid-template-columns:
+      1fr
+      auto;
+
+    gap: 10px;
+  }
+
+
+  .current-race-podium {
+    grid-column:
+      1 / -1;
+
+    width: 100%;
+  }
+
+
+  .current-race-result-arrow {
+    grid-column:
+      2;
+
+    grid-row:
+      1;
+  }
+
+
+  .current-result-table-head {
+    display: none;
+  }
+
+
+  .current-result-row {
+    grid-template-columns:
+      36px
+      minmax(
+        0,
+        1fr
+      )
+      45px;
+
+    gap: 8px;
+  }
+
+
+  .current-result-constructor {
+    grid-column:
+      2;
+
+    padding-left:
+      12px;
+  }
+
+
+  .current-result-grid {
+    display: none;
+  }
+
+
+  .current-result-points {
+    grid-column:
+      3;
+
+    grid-row:
+      1 / span 2;
+
+    align-self:
+      center;
+  }
+}
+
+/* ============================================================
+   AJUSTES RESULTADOS V2
+============================================================ */
+
+
+/* ============================================================
+   SIN LÍNEA BLANCA ANTES DEL BOTÓN
+============================================================ */
+
+.current-results-list
+  .current-race-result-wrapper:last-child {
+  border-bottom: 0;
+}
+
+
+.current-results-toggle {
+  border-top: 0;
+}
+
+
+/* ============================================================
+   PODIO · NOMBRE DE ESCUDERÍA MÁS GRANDE
+============================================================ */
+
+.current-podium-info {
+  min-width: 0;
+}
+
+
+.current-podium-driver
+  strong {
+  display: block;
+
+  font-size: 13px;
+  line-height: 1;
+
+  font-weight: 950;
+}
+
+
+.current-podium-team {
+  display: block;
+
+  grid-column: auto;
+
+  overflow: hidden;
+
+  margin-top: 4px;
+
+  color: #8994a4;
+
+  font-size: 9px;
+  font-weight: 650;
+
+  line-height: 1;
+
+  text-overflow:
+    ellipsis;
+
+  white-space: nowrap;
+}
+
+
+/* ============================================================
+   UN POCO MÁS DE ALTURA PARA QUE RESPIRE EL EQUIPO
+============================================================ */
+
+.current-podium-driver {
+  min-height: 43px;
+
+  grid-template-columns:
+    16px
+    3px
+    minmax(
+      0,
+      1fr
+    );
+
+  padding:
+    7px 8px;
+}
+
+
+/* ============================================================
+   CARGANDO RESULTADOS
+============================================================ */
+
+.current-results-loading {
+  display: grid;
+
+  gap: 1px;
+}
+
+
+.current-results-loading
+  span {
+  display: block;
+
+  height: 70px;
+
+  background:
+    linear-gradient(
+      90deg,
+      rgba(
+        255,
+        255,
+        255,
+        0.015
+      ),
+      rgba(
+        255,
+        255,
+        255,
+        0.045
+      ),
+      rgba(
+        255,
+        255,
+        255,
+        0.015
+      )
+    );
+
+  background-size:
+    220% 100%;
+
+  border-bottom:
+    1px solid
+    rgba(
+      255,
+      255,
+      255,
+      0.04
+    );
+
+  animation:
+    current-results-loading
+    1.2s linear
+    infinite;
+}
+
+
+@keyframes current-results-loading {
+  from {
+    background-position:
+      100% 0;
+  }
+
+  to {
+    background-position:
+      -100% 0;
+  }
+}
+
+/* ============================================================
+   RESULTADOS INLINE V3
+============================================================ */
+
+
+/* La fila seleccionada se convierte
+   en contenedor del detalle */
+
+.current-race-result-wrapper.is-open {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(
+        0,
+        245,
+        212,
+        0.025
+      ),
+      transparent 42%
+    );
+}
+
+
+/* Separación visual entre la carrera
+   seleccionada y su clasificación */
+
+.current-race-result-wrapper.is-open
+  .current-race-result-card {
+  border-bottom:
+    1px solid
+    rgba(
+      0,
+      245,
+      212,
+      0.085
+    );
+}
+
+
+/* Ahora el resultado vive DENTRO
+   de la fila seleccionada */
+
+.current-race-result-wrapper
+  .current-result-detail {
+  margin:
+    14px 14px 16px;
+}
+
+
+/* Cuando una carrera está abierta,
+   su borde inferior pertenece al
+   resultado, no al botón */
+
+.current-race-result-wrapper.is-open {
+  border-bottom:
+    1px solid
+    rgba(
+      255,
+      255,
+      255,
+      0.055
+    );
+}
+
+
+/* Un poco más de aire en la tabla
+   completa */
+
+.current-race-result-wrapper.is-open
+  .current-result-table {
+  contain:
+    layout
+    style;
+}
+
+
+/* ============================================================
+   RENDIMIENTO
+============================================================ */
+
+/*
+  Aislamos el resultado completo.
+
+  Si abrimos Australia,
+  el navegador no necesita recalcular
+  estilos de toda la página.
+*/
+
+.current-result-detail {
+  contain:
+    layout
+    style
+    paint;
+}
+
+
+/*
+  Los elementos fuera del viewport
+  pueden evitar trabajo de pintura.
+*/
+
+.current-result-row {
+  content-visibility:
+    auto;
+
+  contain-intrinsic-size:
+    auto 49px;
+}
+
+
+/* ============================================================
+   MÓVIL
+============================================================ */
+
+@media (
+  max-width: 760px
+) {
+  .current-race-result-wrapper
+    .current-result-detail {
+    margin:
+      10px 8px 12px;
+  }
+}

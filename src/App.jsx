@@ -1,11 +1,9 @@
 import {useEffect, useMemo, useState, } from "react";
-
 import "./App.css";
-
 import Circuits from "./Circuits";
 import Telemetry from "./Telemetry";
-
 import {CountryFlag, FlagBackground } from "./CountryFlag";
+import CurrentSeasonResults from "./CurrentSeasonResults";
 
 const API = "https://api.jolpi.ca/ergast/f1";
 
@@ -118,6 +116,371 @@ async function getJSON(url) {
 
   return response.json();
 }
+
+  /* ============================================================
+    RESULTADOS 2026 · CACHÉ Y CARGA OPTIMIZADA
+  ============================================================ */
+
+  const SEASON_RESULTS_CACHE = {
+    data: null,
+    expiresAt: 0,
+    promise: null,
+  };
+
+  const SEASON_RESULTS_CACHE_TIME =
+    5 * 60 * 1000;
+
+
+  function wait(ms) {
+    return new Promise(
+      (resolve) =>
+        window.setTimeout(
+          resolve,
+          ms
+        )
+    );
+  }
+
+
+  async function getJSONWithRetry(
+    url,
+    retries = 1
+  ) {
+    let lastError;
+
+    for (
+      let attempt = 0;
+      attempt <= retries;
+      attempt += 1
+    ) {
+      try {
+        return await getJSON(
+          url
+        );
+      } catch (error) {
+        lastError =
+          error;
+
+        if (
+          attempt ===
+          retries
+        ) {
+          break;
+        }
+
+        await wait(
+          180 *
+            (attempt + 1)
+        );
+      }
+    }
+
+    throw lastError;
+  }
+
+
+  async function fetch2026Results(
+    calendar
+  ) {
+    /*
+      Si ya los cargamos hace poco,
+      no volvemos a consultar la API.
+    */
+
+    if (
+      SEASON_RESULTS_CACHE.data &&
+      Date.now() <
+        SEASON_RESULTS_CACHE
+          .expiresAt
+    ) {
+      return (
+        SEASON_RESULTS_CACHE
+          .data
+      );
+    }
+
+
+    /*
+      Si ya existe una petición
+      en curso reutilizamos la misma.
+    */
+
+    if (
+      SEASON_RESULTS_CACHE
+        .promise
+    ) {
+      return (
+        SEASON_RESULTS_CACHE
+          .promise
+      );
+    }
+
+
+    SEASON_RESULTS_CACHE.promise =
+      (async () => {
+        const today =
+          localToday();
+
+        const completedRaces =
+          calendar.filter(
+            (race) =>
+              race.date <
+              today
+          );
+
+
+        const completedRounds =
+          new Set(
+            completedRaces.map(
+              (race) =>
+                String(
+                  race.round
+                )
+            )
+          );
+
+
+        /*
+          Guardamos resultados por
+          número de ronda.
+
+          Map evita duplicados.
+        */
+
+        const racesByRound =
+          new Map();
+
+
+        /*
+          PASO 1
+
+          Intentamos conseguir toda
+          la temporada en UNA petición.
+
+          Esto es mucho más eficiente
+          que lanzar 12, 13 o 15
+          peticiones simultáneamente.
+        */
+
+        try {
+          const bulkData =
+            await getJSONWithRetry(
+              `${API}/2026/results.json?limit=2000`,
+              1
+            );
+
+
+          const bulkRaces =
+            bulkData
+              ?.MRData
+              ?.RaceTable
+              ?.Races ||
+            [];
+
+
+          bulkRaces.forEach(
+            (race) => {
+              const round =
+                String(
+                  race.round
+                );
+
+
+              if (
+                completedRounds.has(
+                  round
+                ) &&
+                race.Results
+                  ?.length >
+                  0
+              ) {
+                racesByRound.set(
+                  round,
+                  race
+                );
+              }
+            }
+          );
+        } catch (error) {
+          console.warn(
+            "No se pudieron cargar los resultados 2026 en bloque:",
+            error
+          );
+        }
+
+
+        /*
+          PASO 2
+
+          Detectamos únicamente las
+          rondas que falten.
+
+          Aquí entraría China si por
+          cualquier motivo no hubiese
+          llegado en la primera respuesta.
+
+          También pueden entrar carreras
+          canceladas; si no tienen
+          resultados simplemente no
+          serán agregadas.
+        */
+
+        const missingRaces =
+          completedRaces.filter(
+            (race) =>
+              !racesByRound.has(
+                String(
+                  race.round
+                )
+              )
+          );
+
+
+        /*
+          No enviamos todas las peticiones
+          juntas.
+
+          Se procesan máximo 3 a la vez
+          para reducir la posibilidad de
+          límites temporales de la API.
+        */
+
+        const batchSize =
+          3;
+
+
+        for (
+          let start = 0;
+          start <
+          missingRaces.length;
+          start +=
+          batchSize
+        ) {
+          const batch =
+            missingRaces.slice(
+              start,
+              start +
+                batchSize
+            );
+
+
+          const requests =
+            await Promise.allSettled(
+              batch.map(
+                (race) =>
+                  getJSONWithRetry(
+                    `${API}/2026/${race.round}/results.json`,
+                    1
+                  )
+              )
+            );
+
+
+          requests.forEach(
+            (
+              request,
+              index
+            ) => {
+              if (
+                request.status !==
+                "fulfilled"
+              ) {
+                console.warn(
+                  `No se pudo cargar la ronda ${batch[index].round}`,
+                  request.reason
+                );
+
+                return;
+              }
+
+
+              const race =
+                request.value
+                  ?.MRData
+                  ?.RaceTable
+                  ?.Races
+                  ?.[0];
+
+
+              if (
+                race?.Results
+                  ?.length >
+                0
+              ) {
+                racesByRound.set(
+                  String(
+                    race.round
+                  ),
+                  race
+                );
+              }
+            }
+          );
+
+
+          /*
+            Pequeña pausa solo si
+            queda otro grupo.
+          */
+
+          if (
+            start +
+              batchSize <
+            missingRaces.length
+          ) {
+            await wait(
+              100
+            );
+          }
+        }
+
+
+        const finalResults =
+          Array.from(
+            racesByRound.values()
+          ).sort(
+            (a, b) =>
+              Number(
+                a.round
+              ) -
+              Number(
+                b.round
+              )
+          );
+
+
+        /*
+          Guardamos durante 5 minutos.
+
+          Si vuelves a Temporadas,
+          Circuitos, Telemetría y después
+          a Inicio no necesitamos volver
+          a solicitar inmediatamente
+          todos los resultados.
+        */
+
+        SEASON_RESULTS_CACHE.data =
+          finalResults;
+
+        SEASON_RESULTS_CACHE.expiresAt =
+          Date.now() +
+          SEASON_RESULTS_CACHE_TIME;
+
+
+        return finalResults;
+      })();
+
+
+    try {
+      return await (
+        SEASON_RESULTS_CACHE
+          .promise
+      );
+    } finally {
+      SEASON_RESULTS_CACHE.promise =
+        null;
+    }
+  }
 
 function formatDate(date) {
   return new Intl.DateTimeFormat("es-CL", {
@@ -1365,6 +1728,16 @@ function Home() {
   ] = useState([]);
 
   const [
+  seasonResults,
+  setSeasonResults,
+  ] = useState([]);
+
+  const [
+  resultsLoading,
+  setResultsLoading,
+  ] = useState(true);
+
+  const [
     showAllDrivers,
     setShowAllDrivers,
   ] = useState(false);
@@ -1383,9 +1756,22 @@ function Home() {
     useState("");
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadHome() {
       try {
         setLoading(true);
+        setResultsLoading(true);
+        setError("");
+
+
+        /*
+          PRIMER BLOQUE
+
+          Calendario y mundiales son
+          prioritarios para pintar
+          inmediatamente el Home.
+        */
 
         const [
           raceData,
@@ -1406,39 +1792,126 @@ function Home() {
             ),
           ]);
 
+
+        if (cancelled) {
+          return;
+        }
+
+
+        const calendar =
+          raceData
+            ?.MRData
+            ?.RaceTable
+            ?.Races ||
+          [];
+
+
         setRaces(
-          raceData.MRData
-            .RaceTable.Races ||
-            []
+          calendar
         );
+
 
         setDrivers(
-          driverData.MRData
-            .StandingsTable
-            .StandingsLists?.[0]
+          driverData
+            ?.MRData
+            ?.StandingsTable
+            ?.StandingsLists
+            ?.[0]
             ?.DriverStandings ||
-            []
+          []
         );
+
 
         setConstructors(
-          constructorData.MRData
-            .StandingsTable
-            .StandingsLists?.[0]
+          constructorData
+            ?.MRData
+            ?.StandingsTable
+            ?.StandingsLists
+            ?.[0]
             ?.ConstructorStandings ||
-            []
+          []
         );
-      } catch (err) {
-        console.error(err);
 
-        setError(
-          "No fue posible conectar con los datos de Fórmula 1."
+
+        /*
+          Ya mostramos el Home.
+
+          No esperamos los resultados
+          para pintar Singapur,
+          calendarios y mundiales.
+        */
+
+        setLoading(
+          false
         );
+
+
+        /*
+          SEGUNDO BLOQUE
+
+          Carga optimizada de resultados.
+        */
+
+        try {
+          const completedResults =
+            await fetch2026Results(
+              calendar
+            );
+
+
+          if (
+            !cancelled
+          ) {
+            setSeasonResults(
+              completedResults
+            );
+          }
+        } catch (resultError) {
+          console.error(
+            "Error cargando resultados 2026:",
+            resultError
+          );
+
+
+          if (
+            !cancelled
+          ) {
+            setSeasonResults(
+              []
+            );
+          }
+        }
+      } catch (err) {
+        console.error(
+          err
+        );
+
+
+        if (!cancelled) {
+          setError(
+            "No fue posible conectar con los datos de Fórmula 1."
+          );
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(
+            false
+          );
+
+          setResultsLoading(
+            false
+          );
+        }
       }
     }
 
+
     loadHome();
+
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const upcoming =
@@ -1496,16 +1969,30 @@ function Home() {
           {nextRace && (
             <section className="section next-race-section">
               <SectionTitle
-                label="Siguiente parada"
+                label="Temporada actual"
                 title="Próximo Gran Premio"
                 right={`Ronda ${nextRace.round} · ${formatDate(
                   nextRace.date
                 )}`}
               />
 
-              <FeaturedRaceCard
-                race={nextRace}
-              />
+              <div className="season-now-grid">
+                <FeaturedRaceCard
+                  race={nextRace}
+                />
+
+                <CurrentSeasonResults
+                  races={
+                    seasonResults
+                  }
+                  loading={
+                    resultsLoading
+                  }
+                  getTeamColor={
+                    teamColor
+                  }
+                />
+              </div>
             </section>
           )}
 
