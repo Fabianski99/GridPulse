@@ -1,0 +1,273 @@
+/* ============================================================
+   GRIDPULSE · PERFORMANCE
+   No cambia el diseño visual.
+============================================================ */
+
+
+/* ============================================================
+   HOME · PRÓXIMO GP
+============================================================ */
+
+.featured-race-stage {
+  contain:
+    layout
+    style;
+}
+
+
+.featured-race-card {
+  contain:
+    layout
+    style;
+
+  transform:
+    translateZ(0);
+
+  backface-visibility:
+    hidden;
+}
+
+
+/*
+  Antes .featured-race-main
+  tenía transition: 0.35s ease,
+  lo que hace que el navegador
+  intente animar cualquier propiedad.
+
+  Ahora solo animamos las dos
+  que realmente cambian.
+*/
+
+.featured-race-main {
+  transition:
+    grid-template-columns
+      0.35s ease,
+    gap
+      0.35s ease;
+}
+
+
+.featured-track-wrap,
+.featured-track-wrap
+  .track,
+.featured-weekend {
+  backface-visibility:
+    hidden;
+}
+
+
+.featured-track-wrap
+  .track {
+  will-change:
+    transform;
+}
+
+
+.featured-weekend {
+  contain:
+    layout
+    style;
+}
+
+
+.featured-race-card:hover,
+.featured-race-card:focus {
+  will-change:
+    width,
+    min-height;
+}
+
+
+/* ============================================================
+   CIRCUITOS · TARJETAS FUERA DE PANTALLA
+============================================================ */
+
+/*
+  Esta es una de las optimizaciones
+  más importantes.
+
+  Chrome puede no dibujar las cards
+  que están muy abajo y todavía no
+  han entrado al viewport.
+*/
+
+.circuit-card:not(
+  .expanded
+) {
+  content-visibility:
+    auto;
+
+  contain-intrinsic-size:
+    auto 340px;
+}
+
+
+.circuit-card.expanded {
+  content-visibility:
+    visible;
+}
+
+
+/* ============================================================
+   COMPOSICIÓN GPU
+============================================================ */
+
+.circuit-card,
+.circuit-track-stage,
+.circuit-track-image,
+.circuit-track-svg,
+.circuit-annotations {
+  backface-visibility:
+    hidden;
+}
+
+
+.circuit-card:hover
+  .circuit-track-image,
+.circuit-card:hover
+  .circuit-track-svg,
+.circuit-card.expanded
+  .circuit-track-image,
+.circuit-card.expanded
+  .circuit-track-svg {
+  will-change:
+    transform,
+    opacity;
+}
+
+
+.circuit-card.expanded
+  .circuit-expansion {
+  will-change:
+    grid-template-rows,
+    opacity;
+}
+
+
+/* ============================================================
+   GLOW DE CIRCUITOS
+============================================================ */
+
+/*
+  En Circuits.css tienes:
+
+  filter: blur(95px);
+
+  aplicado al glow de cada tarjeta.
+
+  Con más de 20 circuitos,
+  ese blur es bastante costoso.
+
+  Lo reemplazamos por un gradiente
+  radial que mantiene prácticamente
+  el mismo aspecto visual.
+*/
+
+.circuit-country-glow {
+  width: 300px;
+  height: 300px;
+
+  background:
+    radial-gradient(
+      circle,
+      var(
+        --circuit-accent
+      )
+        0%,
+
+      var(
+        --circuit-accent-2
+      )
+        28%,
+
+      transparent
+        72%
+    );
+
+  filter: none;
+
+  opacity: 0.14;
+
+  transform:
+    translateZ(0);
+}
+
+
+.circuit-card:hover
+  .circuit-country-glow,
+.circuit-card.expanded
+  .circuit-country-glow {
+  opacity: 0.18;
+}
+
+
+/* ============================================================
+   BANDERAS
+============================================================ */
+
+.flag-background,
+.flag-background-image {
+  backface-visibility:
+    hidden;
+}
+
+
+/*
+  Solo reservamos memoria GPU
+  cuando realmente se anima.
+*/
+
+.featured-race-card:hover
+  .flag-background-image,
+
+.featured-race-card:focus
+  .flag-background-image,
+
+.race-card:hover
+  .flag-background-image,
+
+.circuit-card:hover
+  .flag-background-image,
+
+.circuit-card.expanded
+  .flag-background-image {
+  will-change:
+    transform;
+}
+
+
+/* ============================================================
+   REDUCED MOTION
+============================================================ */
+
+@media (
+  prefers-reduced-motion:
+    reduce
+) {
+  .featured-race-card,
+  .featured-race-main,
+  .featured-track-wrap,
+  .featured-track-wrap
+    .track,
+  .featured-weekend,
+  .circuit-card,
+  .circuit-track-stage,
+  .circuit-track-image,
+  .circuit-track-svg,
+  .circuit-expansion,
+  .circuit-annotations,
+  .flag-background,
+  .flag-background-image {
+    transition-duration:
+      0.01ms
+      !important;
+
+    animation-duration:
+      0.01ms
+      !important;
+
+    animation-delay:
+      0ms
+      !important;
+  }
+}

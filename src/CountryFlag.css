@@ -1,0 +1,437 @@
+/* ============================================================
+   GRIDPULSE · COUNTRY FLAGS
+============================================================ */
+
+
+/* ============================================================
+   BANDERA PEQUEÑA
+============================================================ */
+
+.country-flag {
+  display: block;
+
+  flex: 0 0 auto;
+
+  width: 20px;
+  height: 15px;
+
+  object-fit: cover;
+  object-position: center;
+
+  border-radius: 3px;
+
+  box-shadow:
+    0 0 0 1px
+      rgba(
+        255,
+        255,
+        255,
+        0.15
+      ),
+    0 3px 8px
+      rgba(
+        0,
+        0,
+        0,
+        0.28
+      );
+}
+
+
+/* Si algún país no está
+   configurado en el mapa */
+
+.country-flag-fallback {
+  display: inline-flex;
+
+  align-items: center;
+  justify-content: center;
+
+  flex: 0 0 auto;
+
+  width: 20px;
+  height: 15px;
+
+  font-size: 13px;
+}
+
+
+/* ============================================================
+   BANDERA GRANDE / MARCA DE AGUA
+============================================================ */
+
+.flag-background {
+  position: absolute;
+
+  inset: 0;
+
+  z-index: 0;
+
+  overflow: hidden;
+
+  pointer-events: none;
+
+  user-select: none;
+
+  transition:
+    opacity 0.35s ease,
+    transform 0.45s ease;
+}
+
+
+/* Imagen real */
+
+.flag-background-image {
+  position: absolute;
+
+  width: 120%;
+  height: 120%;
+
+  left: 50%;
+  top: 50%;
+
+  display: block;
+
+  object-fit: cover;
+  object-position: center;
+
+  transform:
+    translate(
+      -50%,
+      -50%
+    )
+    scale(1.02);
+
+  filter:
+    saturate(1.25)
+    brightness(1.15)
+    contrast(1.08);
+
+  transition:
+    transform 0.5s
+      cubic-bezier(
+        0.22,
+        1,
+        0.36,
+        1
+      );
+}
+
+
+/* ============================================================
+   HOME · TARJETAS DE CARRERA
+============================================================ */
+
+.race-card,
+.featured-race-card {
+  isolation: isolate;
+}
+
+
+/* Tarjetas normales */
+
+.race-card
+  .flag-background--race {
+  opacity: 0.065;
+}
+
+
+/* Próximo GP grande */
+
+.featured-race-card
+  .flag-background--race {
+  opacity: 0.075;
+}
+
+
+/* Hover */
+
+.race-card:hover
+  .flag-background--race {
+  opacity: 0.105;
+
+  transform: scale(1.015);
+}
+
+
+.featured-race-card:hover
+  .flag-background--race,
+.featured-race-card:focus
+  .flag-background--race {
+  opacity: 0.11;
+
+  transform: scale(1.012);
+}
+
+
+.race-card:hover
+  .flag-background-image,
+.featured-race-card:hover
+  .flag-background-image,
+.featured-race-card:focus
+  .flag-background-image {
+  transform:
+    translate(
+      -50%,
+      -50%
+    )
+    scale(1.07);
+}
+
+
+/* ============================================================
+   CONTENIDO DEL HOME POR ENCIMA
+============================================================ */
+
+.race-card-content,
+.featured-race-content {
+  position: relative;
+
+  z-index: 2;
+}
+
+
+/*
+  NO modificamos position aquí.
+
+  App.css ya controla si son
+  absolute / relative.
+*/
+
+.next-label,
+.featured-expand-hint {
+  z-index: 3;
+}
+
+
+/* ============================================================
+   CIRCUITOS
+============================================================ */
+
+.circuit-card {
+  isolation: isolate;
+}
+
+
+/* Un poco más tenue porque Circuitos
+   ya utiliza colores propios del país */
+
+.circuit-card
+  .flag-background--circuit {
+  opacity: 0.05;
+}
+
+
+.circuit-card:hover
+  .flag-background--circuit {
+  opacity: 0.085;
+
+  transform: scale(1.012);
+}
+
+
+.circuit-card.expanded
+  .flag-background--circuit {
+  opacity: 0.065;
+}
+
+
+.circuit-card:hover
+  .flag-background-image,
+.circuit-card.expanded
+  .flag-background-image {
+  transform:
+    translate(
+      -50%,
+      -50%
+    )
+    scale(1.06);
+}
+
+
+/* ============================================================
+   CAPAS DE CIRCUITOS
+============================================================ */
+
+.circuit-card-button,
+.circuit-expansion {
+  position: relative;
+
+  z-index: 2;
+}
+
+
+.circuit-country-glow {
+  z-index: 1;
+}
+
+
+/* ============================================================
+   FILAS PAÍS + BANDERA
+============================================================ */
+
+.race-country,
+.circuit-country,
+.circuit-detail-eyebrow,
+.gp-name,
+.result-country-line {
+  display: flex;
+
+  align-items: center;
+
+  gap: 7px;
+}
+
+
+/* ============================================================
+   HOME
+============================================================ */
+
+.race-country
+  .country-flag {
+  width: 20px;
+  height: 15px;
+}
+
+
+/* Tarjeta grande */
+
+.featured-race-info
+  .race-country
+  .country-flag {
+  width: 22px;
+  height: 16px;
+
+  border-radius: 4px;
+}
+
+
+/* ============================================================
+   CIRCUITOS
+============================================================ */
+
+.circuit-country
+  .country-flag {
+  width: 21px;
+  height: 16px;
+
+  border-radius: 4px;
+}
+
+
+/* Circuito expandido */
+
+.circuit-detail-eyebrow
+  .country-flag {
+  width: 20px;
+  height: 15px;
+}
+
+
+/* ============================================================
+   TEMPORADAS
+============================================================ */
+
+.gp-name
+  .country-flag {
+  width: 18px;
+  height: 13px;
+}
+
+
+/* ============================================================
+   RESULTADO DE GP
+============================================================ */
+
+.result-country-line
+  .country-flag {
+  width: 20px;
+  height: 15px;
+}
+
+
+/* ============================================================
+   EFECTO DE FUNDIDO PARA LA BANDERA DE FONDO
+============================================================ */
+
+/*
+  Esto evita que la bandera parezca
+  simplemente una imagen pegada encima.
+
+  Se desvanece ligeramente hacia
+  los bordes.
+*/
+
+.flag-background {
+  -webkit-mask-image:
+    radial-gradient(
+      ellipse at center,
+      rgba(0, 0, 0, 0.95)
+        0%,
+      rgba(0, 0, 0, 0.82)
+        45%,
+      rgba(0, 0, 0, 0.25)
+        85%,
+      transparent
+        100%
+    );
+
+  mask-image:
+    radial-gradient(
+      ellipse at center,
+      rgba(0, 0, 0, 0.95)
+        0%,
+      rgba(0, 0, 0, 0.82)
+        45%,
+      rgba(0, 0, 0, 0.25)
+        85%,
+      transparent
+        100%
+    );
+}
+
+
+/* ============================================================
+   RESPONSIVE
+============================================================ */
+
+@media (
+  max-width: 700px
+) {
+  .race-card
+    .flag-background--race {
+    opacity: 0.05;
+  }
+
+
+  .featured-race-card
+    .flag-background--race {
+    opacity: 0.06;
+  }
+
+
+  .circuit-card
+    .flag-background--circuit {
+    opacity: 0.045;
+  }
+
+
+  .flag-background-image {
+    width: 135%;
+    height: 135%;
+  }
+
+
+  .race-country
+    .country-flag {
+    width: 18px;
+    height: 14px;
+  }
+
+
+  .circuit-country
+    .country-flag {
+    width: 19px;
+    height: 14px;
+  }
+}

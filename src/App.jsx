@@ -1,7 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import {useEffect, useMemo, useState, } from "react";
+
 import "./App.css";
+
 import Circuits from "./Circuits";
 import Telemetry from "./Telemetry";
+
+import {CountryFlag, FlagBackground } from "./CountryFlag";
 
 const API = "https://api.jolpi.ca/ergast/f1";
 
@@ -199,6 +203,260 @@ function MediaOrFallback({
   );
 }
 
+const OPENF1_API =
+  "https://api.openf1.org/v1";
+
+const DRIVER_HEADSHOT_CACHE =
+  new Map();
+
+
+function normalizeDriverSlug(
+  text = ""
+) {
+  return text
+    .normalize("NFD")
+    .replace(
+      /[\u0300-\u036f]/g,
+      ""
+    )
+    .toLowerCase()
+    .replace(
+      /[^a-z0-9]+/g,
+      "-"
+    )
+    .replace(
+      /^-|-$/g,
+      ""
+    );
+}
+
+
+function getHistoricalDriverImage(
+  year,
+  driver
+) {
+  if (
+    !year ||
+    !driver?.familyName
+  ) {
+    return "";
+  }
+
+  const numericYear =
+    Number(year);
+
+  /*
+    Para las temporadas históricas usamos
+    la carpeta de pilotos correspondiente
+    a ese año en el CDN de F1.
+
+    Así Hamilton 2020 intenta cargar su
+    imagen de 2020, Verstappen 2021 la
+    de 2021, etc.
+  */
+
+  if (
+    numericYear >= 2020 &&
+    numericYear <= 2025
+  ) {
+    const slug =
+      normalizeDriverSlug(
+        driver.familyName
+      );
+
+    return (
+      "https://media.formula1.com/" +
+      "image/upload/" +
+      "f_auto,c_limit,q_75,w_640/" +
+      "content/dam/fom-website/" +
+      `drivers/${numericYear}Drivers/${slug}`
+    );
+  }
+
+  return "";
+}
+
+
+function DriverPortrait({
+  driver,
+  year,
+  className = "",
+}) {
+  const [src, setSrc] =
+    useState("");
+
+  const [failed, setFailed] =
+    useState(false);
+
+  const driverCode =
+    driver?.code;
+
+  const driverId =
+    driver?.driverId;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setFailed(false);
+    setSrc("");
+
+    if (!driver) {
+      return;
+    }
+
+    const numericYear =
+      Number(year);
+
+    /*
+      TEMPORADAS HISTÓRICAS
+
+      No usamos la foto actual del piloto.
+      Intentamos cargar la imagen específica
+      de esa temporada.
+    */
+
+    if (
+      numericYear >= 2020 &&
+      numericYear <= 2025
+    ) {
+      setSrc(
+        getHistoricalDriverImage(
+          numericYear,
+          driver
+        )
+      );
+
+      return;
+    }
+
+    /*
+      TEMPORADA ACTUAL
+
+      OpenF1 entrega headshot_url.
+    */
+
+    async function loadCurrentPhoto() {
+      const cacheKey =
+        driverCode ||
+        driverId;
+
+      if (
+        cacheKey &&
+        DRIVER_HEADSHOT_CACHE.has(
+          cacheKey
+        )
+      ) {
+        setSrc(
+          DRIVER_HEADSHOT_CACHE.get(
+            cacheKey
+          )
+        );
+
+        return;
+      }
+
+      try {
+        const response =
+          await fetch(
+            `${OPENF1_API}/drivers?session_key=latest`
+          );
+
+        if (!response.ok) {
+          throw new Error(
+            `OpenF1 ${response.status}`
+          );
+        }
+
+        const drivers =
+          await response.json();
+
+        const match =
+          drivers.find(
+            (item) =>
+              item.name_acronym ===
+                driverCode ||
+              normalizeDriverSlug(
+                item.last_name
+              ) ===
+                normalizeDriverSlug(
+                  driver.familyName
+                )
+          );
+
+        const image =
+          match?.headshot_url ||
+          "";
+
+        if (
+          image &&
+          cacheKey
+        ) {
+          DRIVER_HEADSHOT_CACHE.set(
+            cacheKey,
+            image
+          );
+        }
+
+        if (!cancelled) {
+          setSrc(image);
+        }
+      } catch (error) {
+        console.warn(
+          "No se pudo cargar la foto del piloto:",
+          error
+        );
+
+        if (!cancelled) {
+          setSrc("");
+        }
+      }
+    }
+
+    loadCurrentPhoto();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    driverCode,
+    driverId,
+    driver?.familyName,
+    year,
+  ]);
+
+  if (
+    !src ||
+    failed
+  ) {
+    return (
+      <div
+        className={`${className} media-fallback driver-portrait-fallback`}
+      >
+        {getInitials(
+          `${driver?.givenName || ""} ${
+            driver?.familyName || ""
+          }`
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={
+        driver
+          ? `${driver.givenName} ${driver.familyName}`
+          : "Piloto"
+      }
+      className={className}
+      onError={() =>
+        setFailed(true)
+      }
+    />
+  );
+}
+
 function Track({ circuitId, className = "" }) {
   const [failed, setFailed] = useState(false);
 
@@ -253,165 +511,921 @@ function SectionTitle({ label, title, right }) {
   );
 }
 
-function RaceCard({ race, next }) {
-  const country = race.Circuit?.Location?.country;
-  const days = daysUntil(race.date);
+function RaceCard({
+  race,
+  next,
+}) {
+  const country =
+    race.Circuit?.Location
+      ?.country;
+
+  const days =
+    daysUntil(race.date);
 
   return (
-    <article className={`race-card ${next ? "next" : ""}`}>
-      {next && <div className="next-label">Próxima carrera</div>}
+    <article
+      className={`race-card ${
+        next ? "next" : ""
+      }`}
+    >
+      <FlagBackground
+        country={country}
+        variant="race"
+      />
 
-      <div className="round">Ronda {race.round}</div>
+      {next && (
+        <div className="next-label">
+          Próxima carrera
+        </div>
+      )}
 
-      <div className="track-wrap">
-        <Track circuitId={race.Circuit?.circuitId} />
-      </div>
+      <div className="race-card-content">
+        <div className="round">
+          Ronda {race.round}
+        </div>
 
-      <div className="race-country">
-        {FLAGS[country] || "🏁"} {country}
-      </div>
+        <div className="track-wrap">
+          <Track
+            circuitId={
+              race.Circuit
+                ?.circuitId
+            }
+          />
+        </div>
 
-      <h3>{race.raceName}</h3>
+        <div className="race-country">
+          <CountryFlag
+            country={country}
+          />
 
-      <div className="race-card-footer">
-        <span className="race-date">{formatDate(race.date)}</span>
+          <span>
+            {country}
+          </span>
+        </div>
 
-        <span>
-          {days === 0
-            ? "Hoy"
-            : days === 1
-            ? "Mañana"
-            : `${days} días`}
-        </span>
+        <h3>
+          {race.raceName}
+        </h3>
+
+        <div className="race-card-footer">
+          <span className="race-date">
+            {formatDate(
+              race.date
+            )}
+          </span>
+
+          <span>
+            {days === 0
+              ? "Hoy"
+              : days === 1
+              ? "Mañana"
+              : `${days} días`}
+          </span>
+        </div>
       </div>
     </article>
   );
 }
 
-function DriverStandings({ standings }) {
+function sessionDate(session) {
+  if (!session?.date) {
+    return null;
+  }
+
+  const time =
+    session.time || "12:00:00";
+
+  const value = new Date(
+    `${session.date}T${time}`
+  );
+
+  return Number.isNaN(
+    value.getTime()
+  )
+    ? null
+    : value;
+}
+
+function formatSessionDay(session) {
+  const date =
+    sessionDate(session);
+
+  if (!date) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat(
+    "es-CL",
+    {
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+    }
+  ).format(date);
+}
+
+function formatSessionTime(session) {
+  if (!session?.time) {
+    return "Por confirmar";
+  }
+
+  const date =
+    sessionDate(session);
+
+  if (!date) {
+    return "Por confirmar";
+  }
+
+  return new Intl.DateTimeFormat(
+    "es-CL",
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+    }
+  ).format(date);
+}
+
+function getWeekendSessions(race) {
+  const sprintQualifying =
+    race.SprintQualifying ||
+    race.SprintShootout;
+
+  const sessions = [
+    {
+      label: "Práctica 1",
+      short: "FP1",
+      data: race.FirstPractice,
+      type: "practice",
+    },
+
+    {
+      label: "Práctica 2",
+      short: "FP2",
+      data: race.SecondPractice,
+      type: "practice",
+    },
+
+    {
+      label: "Práctica 3",
+      short: "FP3",
+      data: race.ThirdPractice,
+      type: "practice",
+    },
+
+    {
+      label: "Clasificación Sprint",
+      short: "SQ",
+      data: sprintQualifying,
+      type: "sprint",
+    },
+
+    {
+      label: "Sprint",
+      short: "SPR",
+      data: race.Sprint,
+      type: "sprint",
+    },
+
+    {
+      label: "Clasificación",
+      short: "Q",
+      data: race.Qualifying,
+      type: "qualifying",
+    },
+
+    {
+      label: "Carrera",
+      short: "RACE",
+      data: {
+        date: race.date,
+        time: race.time,
+      },
+      type: "race",
+    },
+  ];
+
+  return sessions
+    .filter(
+      (session) =>
+        session.data?.date
+    )
+    .sort((a, b) => {
+      const dateA =
+        sessionDate(a.data);
+
+      const dateB =
+        sessionDate(b.data);
+
+      if (!dateA || !dateB) {
+        return 0;
+      }
+
+      return (
+        dateA.getTime() -
+        dateB.getTime()
+      );
+    });
+}
+
+function FeaturedRaceCard({
+  race,
+}) {
+  const country =
+    race.Circuit?.Location
+      ?.country;
+
+  const locality =
+    race.Circuit?.Location
+      ?.locality;
+
+  const days =
+    daysUntil(race.date);
+
+  const sessions =
+    getWeekendSessions(race);
+
+  const isSprintWeekend =
+    Boolean(race.Sprint);
+
   return (
-    <div className="panel">
-      <div className="panel-header">
-        <h3>Campeonato de pilotos</h3>
-        <p>Clasificación actual · temporada 2026</p>
-      </div>
+    <div className="featured-race-stage">
+      <article
+        className="featured-race-card"
+        tabIndex={0}
+      >
+        <FlagBackground
+          country={country}
+          variant="race"
+        />
 
-      {standings.map((item) => {
-        const constructor = item.Constructors?.[0];
+        <div className="featured-race-content">
+          <div className="featured-race-top">
+            <div>
+              <div className="round">
+                Ronda {race.round}
+              </div>
 
-        return (
-          <div
-            className="standings-row driver-row"
-            key={item.Driver.driverId}
-          >
-            <div className="position">{item.position}</div>
+              <div className="featured-race-badges">
+                <span className="featured-next-badge">
+                  Próxima carrera
+                </span>
 
-            <div
-              className="team-strip"
-              style={{
-                background: teamColor(constructor?.constructorId),
-                boxShadow: `0 0 12px ${teamColor(
-                  constructor?.constructorId
-                )}`,
-              }}
-            />
-
-            <div className="driver-name">
-              {item.Driver.givenName} {item.Driver.familyName}
-
-              <small>{item.Driver.code}</small>
+                {isSprintWeekend && (
+                  <span className="featured-sprint-badge">
+                    Sprint
+                  </span>
+                )}
+              </div>
             </div>
 
-            <div className="team-name">{constructor?.name}</div>
+            <div className="featured-countdown">
+              <strong>
+                {days === 0
+                  ? "HOY"
+                  : days === 1
+                  ? "1"
+                  : days}
+              </strong>
 
-            <div className="points">
-              {item.points}
-              <span>PTS</span>
+              {days > 0 && (
+                <span>
+                  {days === 1
+                    ? "día"
+                    : "días"}
+                </span>
+              )}
             </div>
           </div>
-        );
-      })}
+
+          <div className="featured-race-main">
+            <div className="featured-track-wrap">
+              <Track
+                circuitId={
+                  race.Circuit
+                    ?.circuitId
+                }
+              />
+            </div>
+
+            <div className="featured-race-info">
+              <div className="race-country">
+                <CountryFlag
+                  country={country}
+                />
+
+                <span>
+                  {country}
+                </span>
+              </div>
+
+              <h3>
+                {race.raceName}
+              </h3>
+
+              <p>
+                {
+                  race.Circuit
+                    ?.circuitName
+                }
+              </p>
+
+              <div className="featured-location">
+                <span>
+                  {locality}
+                </span>
+
+                <span>
+                  {formatDate(
+                    race.date
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="featured-weekend">
+            <div className="featured-weekend-header">
+              <div>
+                <span>
+                  Programa
+                </span>
+
+                <strong>
+                  {isSprintWeekend
+                    ? "Fin de semana Sprint"
+                    : "Fin de semana de carrera"}
+                </strong>
+              </div>
+
+              <small>
+                Horario local del dispositivo
+              </small>
+            </div>
+
+            <div className="weekend-sessions">
+              {sessions.map(
+                (session) => (
+                  <div
+                    className={`weekend-session ${session.type}`}
+                    key={`${session.label}-${session.data.date}`}
+                  >
+                    <div className="weekend-session-code">
+                      {
+                        session.short
+                      }
+                    </div>
+
+                    <div className="weekend-session-info">
+                      <strong>
+                        {
+                          session.label
+                        }
+                      </strong>
+
+                      <span>
+                        {formatSessionDay(
+                          session.data
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="weekend-session-time">
+                      {formatSessionTime(
+                        session.data
+                      )}
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="featured-expand-hint">
+          <span>
+            Ver programa completo
+          </span>
+
+          <span>
+            ↗
+          </span>
+        </div>
+      </article>
     </div>
   );
 }
 
-function ConstructorStandings({ standings }) {
+function DriverStandings({
+  standings,
+  expanded,
+  onToggle,
+}) {
+  const leader =
+    standings?.[0];
+
+  const second =
+    standings?.[1];
+
+  const leaderConstructor =
+    leader?.Constructors?.[0];
+
+  const leaderPoints =
+    Number(
+      leader?.points || 0
+    );
+
+  const secondPoints =
+    Number(
+      second?.points || 0
+    );
+
+  const gap =
+    leaderPoints -
+    secondPoints;
+
+  /*
+    El líder ya aparece arriba con su foto.
+
+    Por eso la tabla empieza en P2.
+
+    Cerrado:
+    P1 destacado + P2/P3/P4/P5
+
+    Abierto:
+    P1 destacado + todos los demás
+  */
+
+  const visibleStandings =
+    expanded
+      ? standings.slice(1)
+      : standings.slice(
+          1,
+          5
+        );
+
+  const leaderColor =
+    teamColor(
+      leaderConstructor
+        ?.constructorId
+    );
+
   return (
-    <div className="panel">
-      <div className="panel-header">
-        <h3>Constructores</h3>
-        <p>Clasificación actual · temporada 2026</p>
+    <div className="panel championship-panel">
+      <div className="panel-header championship-panel-header">
+        <div>
+          <div className="championship-kicker">
+            Mundial de pilotos
+          </div>
+
+          <h3>
+            Campeonato de pilotos
+          </h3>
+
+          <p>
+            Clasificación actual ·
+            temporada 2026
+          </p>
+        </div>
       </div>
 
-      {standings.map((item) => (
+      {leader && (
         <div
-          className="standings-row constructor-row"
-          key={item.Constructor.constructorId}
+          className="leader-compact"
+          style={{
+            "--leader-color":
+              leaderColor,
+
+            "--leader-soft":
+              hexToRgba(
+                leaderColor,
+                0.09
+              ),
+          }}
         >
-          <div className="position">{item.position}</div>
-
-          <div
-            className="team-strip"
-            style={{
-              background: teamColor(item.Constructor.constructorId),
-              boxShadow: `0 0 12px ${teamColor(
-                item.Constructor.constructorId
-              )}`,
-            }}
-          />
-
-          <div className="constructor-name">
-            {item.Constructor.name}
+          <div className="leader-photo-wrap">
+            <DriverPortrait
+              driver={
+                leader.Driver
+              }
+              year={2026}
+              className="standings-leader-photo"
+            />
           </div>
 
-          <div className="team-name">
-            {item.wins} victorias
+          <div className="leader-compact-info">
+            <span className="leader-position-label">
+              P1 · Líder actual
+            </span>
+
+            <strong>
+              {
+                leader.Driver
+                  .givenName
+              }{" "}
+              {
+                leader.Driver
+                  .familyName
+              }
+            </strong>
+
+            <small>
+              {
+                leaderConstructor
+                  ?.name
+              }
+            </small>
           </div>
 
-          <div className="points">
-            {item.points}
-            <span>PTS</span>
+          <div className="leader-compact-right">
+            <div className="leader-points">
+              <strong>
+                {leader.points}
+              </strong>
+
+              <span>
+                PTS
+              </span>
+            </div>
+
+            <div className="leader-gap">
+              <span>
+                sobre P2
+              </span>
+
+              <strong>
+                +{gap}
+              </strong>
+            </div>
           </div>
         </div>
-      ))}
+      )}
+
+      <div className="standings-list">
+        {visibleStandings.map(
+          (item) => {
+            const constructor =
+              item
+                .Constructors?.[0];
+
+            return (
+              <div
+                className="standings-row driver-row"
+                key={
+                  item.Driver
+                    .driverId
+                }
+              >
+                <div className="position">
+                  {item.position}
+                </div>
+
+                <div
+                  className="team-strip"
+                  style={{
+                    background:
+                      teamColor(
+                        constructor
+                          ?.constructorId
+                      ),
+
+                    boxShadow: `0 0 12px ${teamColor(
+                      constructor
+                        ?.constructorId
+                    )}`,
+                  }}
+                />
+
+                <div className="driver-name">
+                  {
+                    item.Driver
+                      .givenName
+                  }{" "}
+                  {
+                    item.Driver
+                      .familyName
+                  }
+
+                  <small>
+                    {
+                      item.Driver
+                        .code
+                    }
+                  </small>
+                </div>
+
+                <div className="team-name">
+                  {
+                    constructor?.name
+                  }
+                </div>
+
+                <div className="points">
+                  {
+                    item.points
+                  }
+
+                  <span>
+                    PTS
+                  </span>
+                </div>
+              </div>
+            );
+          }
+        )}
+      </div>
+
+      {standings.length >
+        5 && (
+        <button
+          className="standings-toggle"
+          onClick={onToggle}
+        >
+          <span>
+            {expanded
+              ? "Mostrar Top 5"
+              : "Ver clasificación completa"}
+          </span>
+
+          <span>
+            {expanded
+              ? "↑"
+              : "↓"}
+          </span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ConstructorStandings({
+  standings,
+  expanded,
+  onToggle,
+}) {
+  const leader =
+    standings?.[0];
+
+  const second =
+    standings?.[1];
+
+  const leaderPoints =
+    Number(
+      leader?.points || 0
+    );
+
+  const secondPoints =
+    Number(
+      second?.points || 0
+    );
+
+  const gap =
+    leaderPoints -
+    secondPoints;
+
+  const visibleStandings =
+    expanded
+      ? standings.slice(1)
+      : standings.slice(
+          1,
+          5
+        );
+
+  const leaderColor =
+    teamColor(
+      leader?.Constructor
+        ?.constructorId
+    );
+
+  return (
+    <div className="panel championship-panel">
+      <div className="panel-header championship-panel-header">
+        <div>
+          <div className="championship-kicker">
+            Mundial de constructores
+          </div>
+
+          <h3>
+            Constructores
+          </h3>
+
+          <p>
+            Clasificación actual ·
+            temporada 2026
+          </p>
+        </div>
+      </div>
+
+      {leader && (
+        <div
+          className="constructor-leader-compact"
+          style={{
+            "--leader-color":
+              leaderColor,
+
+            "--leader-soft":
+              hexToRgba(
+                leaderColor,
+                0.09
+              ),
+          }}
+        >
+          <div className="constructor-leader-line" />
+
+          <div className="leader-compact-info">
+            <span className="leader-position-label">
+              P1 · Constructor líder
+            </span>
+
+            <strong>
+              {
+                leader.Constructor
+                  .name
+              }
+            </strong>
+
+            <small>
+              {leader.wins}{" "}
+              victorias
+            </small>
+          </div>
+
+          <div className="leader-compact-right">
+            <div className="leader-points">
+              <strong>
+                {leader.points}
+              </strong>
+
+              <span>
+                PTS
+              </span>
+            </div>
+
+            <div className="leader-gap">
+              <span>
+                sobre P2
+              </span>
+
+              <strong>
+                +{gap}
+              </strong>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="standings-list">
+        {visibleStandings.map(
+          (item) => (
+            <div
+              className="standings-row constructor-row"
+              key={
+                item.Constructor
+                  .constructorId
+              }
+            >
+              <div className="position">
+                {item.position}
+              </div>
+
+              <div
+                className="team-strip"
+                style={{
+                  background:
+                    teamColor(
+                      item
+                        .Constructor
+                        .constructorId
+                    ),
+
+                  boxShadow: `0 0 12px ${teamColor(
+                    item
+                      .Constructor
+                      .constructorId
+                  )}`,
+                }}
+              />
+
+              <div className="constructor-name">
+                {
+                  item.Constructor
+                    .name
+                }
+              </div>
+
+              <div className="team-name">
+                {item.wins}{" "}
+                victorias
+              </div>
+
+              <div className="points">
+                {item.points}
+
+                <span>
+                  PTS
+                </span>
+              </div>
+            </div>
+          )
+        )}
+      </div>
+
+      {standings.length >
+        5 && (
+        <button
+          className="standings-toggle"
+          onClick={onToggle}
+        >
+          <span>
+            {expanded
+              ? "Mostrar Top 5"
+              : "Ver clasificación completa"}
+          </span>
+
+          <span>
+            {expanded
+              ? "↑"
+              : "↓"}
+          </span>
+        </button>
+      )}
     </div>
   );
 }
 
 function Home() {
-  const [races, setRaces] = useState([]);
-  const [drivers, setDrivers] = useState([]);
-  const [constructors, setConstructors] = useState([]);
+  const [races, setRaces] =
+    useState([]);
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [drivers, setDrivers] =
+    useState([]);
+
+  const [
+    constructors,
+    setConstructors,
+  ] = useState([]);
+
+  const [
+    showAllDrivers,
+    setShowAllDrivers,
+  ] = useState(false);
+
+  const [
+    showAllConstructors,
+    setShowAllConstructors,
+  ] = useState(false);
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
+
+  const [error, setError] =
+    useState("");
 
   useEffect(() => {
     async function loadHome() {
       try {
         setLoading(true);
 
-        const [raceData, driverData, constructorData] =
+        const [
+          raceData,
+          driverData,
+          constructorData,
+        ] =
           await Promise.all([
-            getJSON(`${API}/2026/races.json`),
-            getJSON(`${API}/2026/driverstandings.json`),
-            getJSON(`${API}/2026/constructorstandings.json`),
+            getJSON(
+              `${API}/2026/races.json`
+            ),
+
+            getJSON(
+              `${API}/2026/driverstandings.json`
+            ),
+
+            getJSON(
+              `${API}/2026/constructorstandings.json`
+            ),
           ]);
 
         setRaces(
-          raceData.MRData.RaceTable.Races || []
+          raceData.MRData
+            .RaceTable.Races ||
+            []
         );
 
         setDrivers(
-          driverData.MRData.StandingsTable
+          driverData.MRData
+            .StandingsTable
             .StandingsLists?.[0]
-            ?.DriverStandings || []
+            ?.DriverStandings ||
+            []
         );
 
         setConstructors(
-          constructorData.MRData.StandingsTable
+          constructorData.MRData
+            .StandingsTable
             .StandingsLists?.[0]
-            ?.ConstructorStandings || []
+            ?.ConstructorStandings ||
+            []
         );
       } catch (err) {
         console.error(err);
@@ -427,11 +1441,22 @@ function Home() {
     loadHome();
   }, []);
 
-  const upcoming = useMemo(() => {
-    const today = localToday();
+  const upcoming =
+    useMemo(() => {
+      const today =
+        localToday();
 
-    return races.filter((race) => race.date >= today);
-  }, [races]);
+      return races.filter(
+        (race) =>
+          race.date >= today
+      );
+    }, [races]);
+
+  const nextRace =
+    upcoming[0] || null;
+
+  const laterRaces =
+    upcoming.slice(1);
 
   return (
     <main className="page">
@@ -448,10 +1473,14 @@ function Home() {
           </h1>
 
           <p>
-            Calendario, clasificaciones y resultados de
-            Fórmula 1. Una base preparada para crecer
-            hacia análisis, telemetría, estrategia y
-            datos en tiempo real.
+            Calendario,
+            clasificaciones y
+            resultados de Fórmula
+            1. Una base preparada
+            para crecer hacia
+            análisis, telemetría,
+            estrategia y datos en
+            tiempo real.
           </p>
         </div>
       </section>
@@ -459,47 +1488,103 @@ function Home() {
       {loading ? (
         <Loader />
       ) : error ? (
-        <div className="error">{error}</div>
+        <div className="error">
+          {error}
+        </div>
       ) : (
         <>
-          <section className="section">
-            <SectionTitle
-              label="Calendario"
-              title="Próximas carreras"
-              right={`${upcoming.length} Grandes Premios restantes`}
-            />
+          {nextRace && (
+            <section className="section next-race-section">
+              <SectionTitle
+                label="Siguiente parada"
+                title="Próximo Gran Premio"
+                right={`Ronda ${nextRace.round} · ${formatDate(
+                  nextRace.date
+                )}`}
+              />
 
-            {upcoming.length > 0 ? (
-              <div className="race-grid">
-                {upcoming.map((race, index) => (
-                  <RaceCard
-                    race={race}
-                    next={index === 0}
-                    key={`${race.season}-${race.round}`}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="empty">
-                La temporada 2026 ha finalizado.
-              </div>
-            )}
-          </section>
+              <FeaturedRaceCard
+                race={nextRace}
+              />
+            </section>
+          )}
 
-          <section className="section">
+          <section className="section championship-section">
             <SectionTitle
-              label="Standings"
+              label="Clasificación"
               title="Campeonato 2026"
               right="Datos actualizados desde Jolpica F1"
             />
 
             <div className="tables-grid">
-              <DriverStandings standings={drivers} />
+              <DriverStandings
+                standings={
+                  drivers
+                }
+                expanded={
+                  showAllDrivers
+                }
+                onToggle={() =>
+                  setShowAllDrivers(
+                    (current) =>
+                      !current
+                  )
+                }
+              />
 
               <ConstructorStandings
-                standings={constructors}
+                standings={
+                  constructors
+                }
+                expanded={
+                  showAllConstructors
+                }
+                onToggle={() =>
+                  setShowAllConstructors(
+                    (current) =>
+                      !current
+                  )
+                }
               />
             </div>
+          </section>
+
+          <section className="section">
+            <SectionTitle
+              label="Calendario"
+              title="Después del próximo GP"
+              right={
+                laterRaces.length
+                  ? `${laterRaces.length} Grandes Premios restantes`
+                  : "Última carrera de la temporada"
+              }
+            />
+
+            {laterRaces.length >
+            0 ? (
+              <div className="race-grid">
+                {laterRaces.map(
+                  (race) => (
+                    <RaceCard
+                      race={
+                        race
+                      }
+                      next={
+                        false
+                      }
+                      key={`${race.season}-${race.round}`}
+                    />
+                  )
+                )}
+              </div>
+            ) : (
+              <div className="empty">
+                No quedan más
+                carreras después
+                del próximo Gran
+                Premio.
+              </div>
+            )}
           </section>
         </>
       )}
@@ -534,9 +1619,14 @@ function RaceResults({ race, loading }) {
     <div className="result-panel">
       <div className="result-hero">
         <div>
-          <div className="eyebrow">
-            {FLAGS[country] || "🏁"} {country} · Ronda{" "}
-            {race.round}
+          <div className="eyebrow result-country-line">
+            <CountryFlag
+              country={country}
+            />
+
+            <span>
+              {country} · Ronda {race.round}
+            </span>
           </div>
 
           <h2>{race.raceName}</h2>
@@ -596,38 +1686,83 @@ function SeasonSummaryPanel({
   championDriver,
   championConstructor,
 }) {
-  const driver = championDriver?.Driver;
+  const driver =
+    championDriver?.Driver;
 
   const driverTeam =
-    championDriver?.Constructors?.[0];
+    championDriver
+      ?.Constructors?.[0];
 
-  const constructor =
-    championConstructor?.Constructor;
+  /*
+    Evitamos usar una variable llamada
+    "constructor", porque puede entrar en
+    conflicto con propiedades globales del
+    navegador.
 
-  const driverImage =
-    DRIVER_ASSETS[driver?.driverId];
+    championTeam siempre será el constructor
+    campeón real recibido desde Jolpica.
+  */
+
+  const championTeam =
+    championConstructor
+      ?.Constructor || null;
 
   const constructorLogo =
-    CONSTRUCTOR_ASSETS[
-      constructor?.constructorId
-    ];
+    championTeam
+      ? CONSTRUCTOR_ASSETS[
+          championTeam
+            .constructorId
+        ]
+      : "";
 
-  const driverTeamColor = teamColor(
-    driverTeam?.constructorId
-  );
+  const driverTeamColor =
+    teamColor(
+      driverTeam
+        ?.constructorId
+    );
 
-  const constructorTeamColor = teamColor(
-    constructor?.constructorId
-  );
+  const constructorTeamColor =
+    teamColor(
+      championTeam
+        ?.constructorId
+    );
 
-  function championStyles(color) {
+  function championStyles(
+    color
+  ) {
     return {
-      "--team-color": color,
-      "--team-soft": hexToRgba(color, 0.07),
-      "--team-soft-2": hexToRgba(color, 0.13),
-      "--team-medium": hexToRgba(color, 0.22),
-      "--team-border": hexToRgba(color, 0.35),
-      "--team-glow": hexToRgba(color, 0.18),
+      "--team-color":
+        color,
+
+      "--team-soft":
+        hexToRgba(
+          color,
+          0.07
+        ),
+
+      "--team-soft-2":
+        hexToRgba(
+          color,
+          0.13
+        ),
+
+      "--team-medium":
+        hexToRgba(
+          color,
+          0.22
+        ),
+
+      "--team-border":
+        hexToRgba(
+          color,
+          0.35
+        ),
+
+      "--team-glow":
+        hexToRgba(
+          color,
+          0.18
+        ),
     };
   }
 
@@ -638,21 +1773,30 @@ function SeasonSummaryPanel({
           Resumen de temporada
         </div>
 
-        <h2>{year}</h2>
+        <h2>
+          {year}
+        </h2>
 
         <p>
-          Campeones de la temporada seleccionada.
-          Cuando elijas un Gran Premio, este panel
-          mostrará el resultado de esa carrera.
+          Campeones de la temporada
+          seleccionada. Cuando elijas
+          un Gran Premio, este panel
+          mostrará el resultado de esa
+          carrera.
         </p>
       </div>
 
       <div className="champion-cards">
-        {/* CAMPEÓN DE PILOTOS */}
+
+        {/* =========================
+            CAMPEÓN DE PILOTOS
+        ========================= */}
 
         <article
           className="champion-card"
-          style={championStyles(driverTeamColor)}
+          style={championStyles(
+            driverTeamColor
+          )}
         >
           <div className="champion-glow" />
 
@@ -663,7 +1807,10 @@ function SeasonSummaryPanel({
 
             <div className="champion-trophy-wrapper">
               <MediaOrFallback
-                src={TROPHY_ASSETS.driver}
+                src={
+                  TROPHY_ASSETS
+                    .driver
+                }
                 alt="Trofeo campeonato de pilotos"
                 className="champion-trophy"
                 fallback="🏆"
@@ -672,19 +1819,10 @@ function SeasonSummaryPanel({
           </div>
 
           <div className="champion-main">
-            <MediaOrFallback
-              src={driverImage}
-              alt={
-                driver
-                  ? `${driver.givenName} ${driver.familyName}`
-                  : "Piloto campeón"
-              }
+            <DriverPortrait
+              driver={driver}
+              year={year}
               className="champion-photo"
-              fallback={getInitials(
-                `${driver?.givenName || ""} ${
-                  driver?.familyName || ""
-                }`
-              )}
             />
 
             <div className="champion-info">
@@ -695,32 +1833,44 @@ function SeasonSummaryPanel({
               </h3>
 
               <p>
-                {driverTeam?.name || "Constructor"} ·{" "}
-                {championDriver?.points || 0} pts
+                {driverTeam?.name ||
+                  "Constructor"}{" "}
+                ·{" "}
+                {championDriver
+                  ?.points || 0}{" "}
+                pts
               </p>
             </div>
           </div>
 
           <div className="champion-stats">
             <div className="champion-stat">
-              <span>Puntos</span>
+              <span>
+                Puntos
+              </span>
 
               <strong>
-                {championDriver?.points || 0}
+                {championDriver
+                  ?.points || 0}
               </strong>
             </div>
 
             <div className="champion-stat">
-              <span>Victorias</span>
+              <span>
+                Victorias
+              </span>
 
               <strong>
-                {championDriver?.wins || 0}
+                {championDriver
+                  ?.wins || 0}
               </strong>
             </div>
           </div>
         </article>
 
-        {/* CAMPEÓN DE CONSTRUCTORES */}
+        {/* =========================
+            CAMPEÓN CONSTRUCTORES
+        ========================= */}
 
         <article
           className="champion-card"
@@ -737,7 +1887,10 @@ function SeasonSummaryPanel({
 
             <div className="champion-trophy-wrapper">
               <MediaOrFallback
-                src={TROPHY_ASSETS.constructor}
+                src={
+                  TROPHY_ASSETS
+                    .constructor
+                }
                 alt="Trofeo campeonato de constructores"
                 className="champion-trophy"
                 fallback="🏁"
@@ -747,43 +1900,57 @@ function SeasonSummaryPanel({
 
           <div className="champion-main">
             <MediaOrFallback
-              src={constructorLogo}
+              src={
+                constructorLogo
+              }
               alt={
-                constructor?.name ||
+                championTeam?.name ||
                 "Constructor campeón"
               }
               className="champion-logo"
               fallback={getInitials(
-                constructor?.name || "C"
+                championTeam
+                  ?.name ||
+                  "C"
               )}
             />
 
             <div className="champion-info">
               <h3>
-                {constructor?.name || "Sin datos"}
+                {championTeam?.name ||
+                  "Sin datos"}
               </h3>
 
               <p>
-                Campeonato de constructores ·{" "}
-                {championConstructor?.points || 0} pts
+                Campeonato de
+                constructores ·{" "}
+                {championConstructor
+                  ?.points || 0}{" "}
+                pts
               </p>
             </div>
           </div>
 
           <div className="champion-stats">
             <div className="champion-stat">
-              <span>Puntos</span>
+              <span>
+                Puntos
+              </span>
 
               <strong>
-                {championConstructor?.points || 0}
+                {championConstructor
+                  ?.points || 0}
               </strong>
             </div>
 
             <div className="champion-stat">
-              <span>Victorias</span>
+              <span>
+                Victorias
+              </span>
 
               <strong>
-                {championConstructor?.wins || 0}
+                {championConstructor
+                  ?.wins || 0}
               </strong>
             </div>
           </div>
@@ -791,8 +1958,8 @@ function SeasonSummaryPanel({
       </div>
 
       <div className="summary-hint">
-        Selecciona un GP de la lista para ver el
-        resultado completo.
+        Selecciona un GP de la lista
+        para ver el resultado completo.
       </div>
     </div>
   );
@@ -959,10 +2126,14 @@ function Seasons() {
 
                   <div>
                     <div className="gp-name">
-                      {FLAGS[country] || "🏁"}{" "}
-                      {race.raceName}
-                    </div>
+                      <CountryFlag
+                        country={country}
+                      />
 
+                      <span>
+                        {race.raceName}
+                      </span>
+                    </div>
                     <div className="gp-place">
                       {race.Circuit?.circuitName}
                     </div>

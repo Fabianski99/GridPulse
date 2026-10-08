@@ -1,8 +1,9 @@
-import { useMemo, useRef, useState } from "react";
+import {memo, useCallback, useMemo, useRef, useState} from "react";
 import "./Circuits.css";
 import { getCircuitRecord } from "./CircuitRecords";
 import { CIRCUIT_TRACKS } from "./CircuitTracks";
 import SegmentedCircuit from "./SegmentedCircuit";
+import { CountryFlag, FlagBackground } from "./CountryFlag";
 
 const API = "https://api.jolpi.ca/ergast/f1";
 
@@ -14,6 +15,8 @@ const ALT_TRACK_BASE =
 
 const ALT_TRACK_OUTLINE_BASE =
   "https://raw.githubusercontent.com/julesr0y/f1-circuits-svg/main/circuits/minimal/white-outline";
+
+const CIRCUIT_HISTORY_CACHE = new Map();
 
 const CIRCUITS = [
   {
@@ -897,135 +900,271 @@ async function fetchCircuitHistory(circuit) {
   };
 }
 
-function CircuitTrack({ circuit, expanded }) {
-  const segmentedTrack = CIRCUIT_TRACKS[circuit.id];
-  const hasSegmentedTrack =
-    segmentedTrack?.type === "segmented" &&
-    typeof segmentedTrack.viewBox === "string" &&
-    ["s1", "s2", "s3"].every(
-      (sector) => typeof segmentedTrack.sectors?.[sector] === "string"
-    );
+const CircuitTrack =
+  memo(
+    function CircuitTrack({
+      circuit,
+      expanded,
+    }) {
+      const segmentedTrack =
+        CIRCUIT_TRACKS[
+          circuit.id
+        ];
 
-  const initialSources = useMemo(() => {
-    const sources = [];
 
-    if (circuit.trackFile) {
-      sources.push(`${MASTER_TRACK_BASE}/${circuit.trackFile}`);
-    }
+      const hasSegmentedTrack =
+        segmentedTrack
+          ?.type ===
+          "segmented" &&
 
-    if (circuit.altTracks) {
-      sources.push(...circuit.altTracks);
-    }
+        typeof
+          segmentedTrack
+            .viewBox ===
+          "string" &&
 
-    return sources;
-  }, [circuit]);
+        [
+          "s1",
+          "s2",
+          "s3",
+        ].every(
+          (sector) =>
+            typeof
+              segmentedTrack
+                .sectors
+                ?.[
+                  sector
+                ] ===
+            "string"
+        );
 
-  const [sourceIndex, setSourceIndex] = useState(0);
-  const currentSource = initialSources[sourceIndex];
 
-  if (hasSegmentedTrack) {
-    return (
-      <SegmentedCircuit
-        circuitId={circuit.id}
-        circuitName={circuit.name}
-        cornerCount={circuit.corners}
-        expanded={expanded}
-        track={segmentedTrack}
-      />
-    );
-  }
+      const initialSources =
+        useMemo(
+          () => {
+            const sources =
+              [];
 
-  if (!currentSource) {
-    return (
-      <div className="circuit-track-fallback-wrap">
-        <svg
-          className="circuit-track-fallback"
-          viewBox="0 0 200 110"
-          fill="none"
-          aria-label="Trazado no disponible"
-        >
-          <path
-            d="M20 72C40 22 70 22 82 48C94 75 110 87 132 69C151 54 143 26 167 25C185 24 188 51 172 64C153 79 126 78 111 91C94 104 72 92 61 76C49 58 36 82 20 72Z"
-            stroke="currentColor"
-            strokeWidth="5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+
+            if (
+              circuit.trackFile
+            ) {
+              sources.push(
+                `${MASTER_TRACK_BASE}/${circuit.trackFile}`
+              );
+            }
+
+
+            if (
+              circuit.altTracks
+            ) {
+              sources.push(
+                ...circuit
+                  .altTracks
+              );
+            }
+
+
+            return sources;
+          },
+          [
+            circuit,
+          ]
+        );
+
+
+      const [
+        sourceIndex,
+        setSourceIndex,
+      ] =
+        useState(0);
+
+
+      const currentSource =
+        initialSources[
+          sourceIndex
+        ];
+
+
+      if (
+        hasSegmentedTrack
+      ) {
+        return (
+          <SegmentedCircuit
+            circuitId={
+              circuit.id
+            }
+            circuitName={
+              circuit.name
+            }
+            cornerCount={
+              circuit.corners
+            }
+            expanded={
+              expanded
+            }
+            track={
+              segmentedTrack
+            }
           />
-        </svg>
+        );
+      }
 
-        <span className="circuit-track-fallback-text">
-          Layout pending
-        </span>
-      </div>
-    );
-  }
 
-  return (
-    <img
-      src={currentSource}
-      className="circuit-track-image"
-      alt={`Trazado de ${circuit.name}`}
-      onError={() => setSourceIndex((current) => current + 1)}
-    />
+      if (
+        !currentSource
+      ) {
+        return (
+          <div className="circuit-track-fallback-wrap">
+            <svg
+              className="circuit-track-fallback"
+              viewBox="0 0 200 110"
+              fill="none"
+              aria-label="Trazado no disponible"
+            >
+              <path
+                d="M20 72C40 22 70 22 82 48C94 75 110 87 132 69C151 54 143 26 167 25C185 24 188 51 172 64C153 79 126 78 111 91C94 104 72 92 61 76C49 58 36 82 20 72Z"
+                stroke="currentColor"
+                strokeWidth="5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+
+            <span className="circuit-track-fallback-text">
+              Layout pending
+            </span>
+          </div>
+        );
+      }
+
+
+      return (
+        <img
+          src={
+            currentSource
+          }
+          className="circuit-track-image"
+          alt={`Trazado de ${circuit.name}`}
+          loading="lazy"
+          decoding="async"
+          fetchPriority="low"
+          onError={() =>
+            setSourceIndex(
+              (
+                current
+              ) =>
+                current +
+                1
+            )
+          }
+        />
+      );
+    }
   );
-}
 
-function StaticStat({ label, value, sub }) {
-  return (
-    <div className="circuit-static-stat">
-      <span>{label}</span>
-      <strong>{value}</strong>
-      {sub && <small>{sub}</small>}
-    </div>
-  );
-}
+const StaticStat =
+  memo(
+    function StaticStat({
+      label,
+      value,
+      sub,
+    }) {
+      return (
+        <div className="circuit-static-stat">
+          <span>
+            {label}
+          </span>
 
-function DynamicStat({ label, value, sub, loading }) {
-  return (
-    <div className="circuit-history-stat">
-      <span>{label}</span>
-
-      {loading ? (
-        <>
-          <div className="circuit-stat-skeleton large" />
-          <div className="circuit-stat-skeleton small" />
-        </>
-      ) : (
-        <>
-          <strong className={!value ? "muted" : ""}>
-            {value || "Dato no disponible"}
+          <strong>
+            {value}
           </strong>
 
-          <small>
-            {sub || "No hay suficiente historial disponible."}
-          </small>
-        </>
-      )}
-    </div>
+          {sub && (
+            <small>
+              {sub}
+            </small>
+          )}
+        </div>
+      );
+    }
   );
-}
 
-function CircuitCard({ circuit, expanded, stats, onToggle }) {
+const DynamicStat =
+  memo(
+    function DynamicStat({
+      label,
+      value,
+      sub,
+      loading,
+    }) {
+      return (
+        <div className="circuit-history-stat">
+          <span>
+            {label}
+          </span>
+
+          {loading ? (
+            <>
+              <div className="circuit-stat-skeleton large" />
+
+              <div className="circuit-stat-skeleton small" />
+            </>
+          ) : (
+            <>
+              <strong
+                className={
+                  !value
+                    ? "muted"
+                    : ""
+                }
+              >
+                {value ||
+                  "Dato no disponible"}
+              </strong>
+
+              <small>
+                {sub ||
+                  "No hay suficiente historial disponible."}
+              </small>
+            </>
+          )}
+        </div>
+      );
+    }
+  );
+
+const CircuitCard = memo( function CircuitCard({ circuit, expanded, stats, onToggle }) {
   const historyLoading = stats?.loading === true;
   const history = stats?.data;
 
   return (
     <article
-      className={`circuit-card ${expanded ? "expanded" : ""}`}
+      className={`circuit-card ${
+      expanded ? "expanded" : ""
+      }`}
       style={circuitStyle(circuit)}
     >
+      <FlagBackground
+        country={circuit.country}
+        variant="circuit"
+      />
       <div className="circuit-country-glow" />
 
       <button
         className="circuit-card-button"
-        onClick={onToggle}
+        onClick={() => onToggle(circuit)}
         aria-expanded={expanded}
       >
         <div className="circuit-card-heading">
           <div>
             <div className="circuit-country">
-              <span>{circuit.flag}</span>
-              {circuit.country}
+              <CountryFlag
+                country={circuit.country}
+              />
+
+              <span>
+                {circuit.country}
+              </span>
             </div>
 
             <h2>{circuit.name}</h2>
@@ -1073,7 +1212,13 @@ function CircuitCard({ circuit, expanded, stats, onToggle }) {
           <div className="circuit-expanded-header">
             <div>
               <div className="circuit-detail-eyebrow">
-                {circuit.flag} {circuit.country}
+                <CountryFlag
+                  country={circuit.country}
+                />
+
+                <span>
+                  {circuit.country}
+                </span>
               </div>
               <h3>{circuit.fullName}</h3>
             </div>
@@ -1192,109 +1337,401 @@ function CircuitCard({ circuit, expanded, stats, onToggle }) {
       </div>
     </article>
   );
-}
+});
 
 export default function Circuits() {
-  const [expandedCircuit, setExpandedCircuit] = useState(null);
-  const [filter, setFilter] = useState("all");
-  const [statsByCircuit, setStatsByCircuit] = useState({});
-  const requestsInProgress = useRef(new Set());
+  const [
+    expandedCircuit,
+    setExpandedCircuit,
+  ] =
+    useState(null);
 
-  const visibleCircuits = useMemo(() => {
-    if (filter === "all") {
-      return CIRCUITS;
-    }
 
-    return CIRCUITS.filter((circuit) => circuit.season === filter);
-  }, [filter]);
+  const [
+    filter,
+    setFilter,
+  ] =
+    useState("all");
 
-  async function ensureCircuitStats(circuit) {
-    if (
-      statsByCircuit[circuit.id]?.data ||
-      requestsInProgress.current.has(circuit.id)
-    ) {
-      return;
-    }
 
-    requestsInProgress.current.add(circuit.id);
+  const [
+    statsByCircuit,
+    setStatsByCircuit,
+  ] =
+    useState(
+      () =>
+        Object.fromEntries(
+          CIRCUIT_HISTORY_CACHE.entries()
+        )
+    );
 
-    const manualRecord = getCircuitRecord(circuit.id);
 
-    setStatsByCircuit((current) => ({
-      ...current,
-      [circuit.id]: {
-        loading: true,
-        error: false,
-        data: manualRecord?.lapRecord
-          ? {
-              lapRecord: manualRecord.lapRecord,
-              mostWins: null,
-              mostPoles: null,
-              latestWinner: null,
-              racesHeld: null,
-              partial: false,
-            }
-          : null,
+  const requestsInProgress =
+    useRef(
+      new Set()
+    );
+
+
+  const expandedCircuitRef =
+    useRef(null);
+
+
+  const statsRef =
+    useRef(
+      Object.fromEntries(
+        CIRCUIT_HISTORY_CACHE.entries()
+      )
+    );
+
+
+  const visibleCircuits =
+    useMemo(
+      () => {
+        if (
+          filter ===
+          "all"
+        ) {
+          return CIRCUITS;
+        }
+
+
+        return CIRCUITS.filter(
+          (
+            circuit
+          ) =>
+            circuit.season ===
+            filter
+        );
       },
-    }));
+      [
+        filter,
+      ]
+    );
 
-    try {
-      const data = await fetchCircuitHistory(circuit);
 
-      setStatsByCircuit((current) => ({
-        ...current,
-        [circuit.id]: {
-          loading: false,
+  const commitCircuitStats =
+    useCallback(
+      (
+        circuitId,
+        nextEntry
+      ) => {
+        statsRef.current = {
+          ...statsRef.current,
+
+          [
+            circuitId
+          ]:
+            nextEntry,
+        };
+
+
+        CIRCUIT_HISTORY_CACHE.set(
+          circuitId,
+          nextEntry
+        );
+
+
+        setStatsByCircuit(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [
+              circuitId
+            ]:
+              nextEntry,
+          })
+        );
+      },
+      []
+    );
+
+
+  const ensureCircuitStats =
+    useCallback(
+      async (
+        circuit
+      ) => {
+        const cached =
+          statsRef
+            .current[
+            circuit.id
+          ] ||
+
+          CIRCUIT_HISTORY_CACHE.get(
+            circuit.id
+          );
+
+
+        if (
+          cached?.data ||
+
+          requestsInProgress
+            .current
+            .has(
+              circuit.id
+            )
+        ) {
+          return;
+        }
+
+
+        requestsInProgress
+          .current
+          .add(
+            circuit.id
+          );
+
+
+        const manualRecord =
+          getCircuitRecord(
+            circuit.id
+          );
+
+
+        const loadingEntry = {
+          loading: true,
+
           error: false,
-          data,
-        },
-      }));
-    } catch (error) {
-      console.error(
-        `Error cargando estadísticas de ${circuit.name}:`,
-        error
-      );
 
-      setStatsByCircuit((current) => ({
-        ...current,
-        [circuit.id]: {
-          loading: false,
-          error: true,
-          data: current[circuit.id]?.data || {
-            lapRecord: manualRecord?.lapRecord || null,
-            mostWins: manualRecord?.mostWins || null,
-            mostPoles: manualRecord?.mostPoles || null,
-            latestWinner: null,
-            racesHeld: null,
-            partial: true,
-          },
-        },
-      }));
-    } finally {
-      requestsInProgress.current.delete(circuit.id);
-    }
-  }
+          data:
+            manualRecord
+              ?.lapRecord
+              ? {
+                  lapRecord:
+                    manualRecord
+                      .lapRecord,
 
-  function toggleCircuit(circuit) {
-    if (expandedCircuit === circuit.id) {
-      setExpandedCircuit(null);
-      return;
-    }
+                  mostWins:
+                    null,
 
-    setExpandedCircuit(circuit.id);
-    ensureCircuitStats(circuit);
-  }
+                  mostPoles:
+                    null,
 
-  function changeFilter(nextFilter) {
-    setFilter(nextFilter);
-    setExpandedCircuit(null);
-  }
+                  latestWinner:
+                    null,
+
+                  racesHeld:
+                    null,
+
+                  partial:
+                    false,
+                }
+              : null,
+        };
+
+
+        commitCircuitStats(
+          circuit.id,
+          loadingEntry
+        );
+
+
+        try {
+          const data =
+            await fetchCircuitHistory(
+              circuit
+            );
+
+
+          commitCircuitStats(
+            circuit.id,
+            {
+              loading:
+                false,
+
+              error:
+                false,
+
+              data,
+            }
+          );
+        } catch (
+          error
+        ) {
+          console.error(
+            `Error cargando estadísticas de ${circuit.name}:`,
+            error
+          );
+
+
+          const previousData =
+            statsRef
+              .current[
+              circuit.id
+            ]?.data;
+
+
+          commitCircuitStats(
+            circuit.id,
+            {
+              loading:
+                false,
+
+              error:
+                true,
+
+              data:
+                previousData ||
+                {
+                  lapRecord:
+                    manualRecord
+                      ?.lapRecord ||
+                    null,
+
+                  mostWins:
+                    manualRecord
+                      ?.mostWins ||
+                    null,
+
+                  mostPoles:
+                    manualRecord
+                      ?.mostPoles ||
+                    null,
+
+                  latestWinner:
+                    null,
+
+                  racesHeld:
+                    null,
+
+                  partial:
+                    true,
+                },
+            }
+          );
+        } finally {
+          requestsInProgress
+            .current
+            .delete(
+              circuit.id
+            );
+        }
+      },
+      [
+        commitCircuitStats,
+      ]
+    );
+
+
+  /*
+    No iniciamos las peticiones
+    exactamente en el mismo instante
+    que la expansión.
+
+    Primero dejamos que se pinte
+    la animación.
+  */
+  const scheduleCircuitStats =
+    useCallback(
+      (
+        circuit
+      ) => {
+        const cached =
+          statsRef
+            .current[
+            circuit.id
+          ] ||
+
+          CIRCUIT_HISTORY_CACHE.get(
+            circuit.id
+          );
+
+
+        if (
+          cached?.data
+        ) {
+          return;
+        }
+
+
+        window.requestAnimationFrame(
+          () => {
+            window.setTimeout(
+              () => {
+                ensureCircuitStats(
+                  circuit
+                );
+              },
+              90
+            );
+          }
+        );
+      },
+      [
+        ensureCircuitStats,
+      ]
+    );
+
+
+  const toggleCircuit =
+    useCallback(
+      (
+        circuit
+      ) => {
+        const isClosing =
+          expandedCircuitRef
+            .current ===
+          circuit.id;
+
+
+        const nextCircuit =
+          isClosing
+            ? null
+            : circuit.id;
+
+
+        expandedCircuitRef.current =
+          nextCircuit;
+
+
+        setExpandedCircuit(
+          nextCircuit
+        );
+
+
+        if (
+          !isClosing
+        ) {
+          scheduleCircuitStats(
+            circuit
+          );
+        }
+      },
+      [
+        scheduleCircuitStats,
+      ]
+    );
+
+
+  const changeFilter =
+    useCallback(
+      (
+        nextFilter
+      ) => {
+        expandedCircuitRef.current =
+          null;
+
+        setFilter(
+          nextFilter
+        );
+
+        setExpandedCircuit(
+          null
+        );
+      },
+      []
+    );
+
 
   return (
     <main className="page circuits-page">
       <section className="circuits-hero">
         <div>
-          <div className="eyebrow">GridPulse Tracks</div>
+          <div className="eyebrow">
+            GridPulse Tracks
+          </div>
 
           <h1>
             Los escenarios
@@ -1310,57 +1747,136 @@ export default function Circuits() {
         </div>
 
         <div className="circuits-hero-number">
-          <strong>{CIRCUITS.length}</strong>
-          <span>circuitos</span>
+          <strong>
+            {
+              CIRCUITS.length
+            }
+          </strong>
+
+          <span>
+            circuitos
+          </span>
         </div>
       </section>
 
+
       <div className="circuits-toolbar">
         <button
-          className={filter === "all" ? "active" : ""}
-          onClick={() => changeFilter("all")}
+          className={
+            filter ===
+            "all"
+              ? "active"
+              : ""
+          }
+          onClick={() =>
+            changeFilter(
+              "all"
+            )
+          }
         >
           Todos
-          <span>{CIRCUITS.length}</span>
+
+          <span>
+            {
+              CIRCUITS.length
+            }
+          </span>
         </button>
 
+
         <button
-          className={filter === "2026" ? "active" : ""}
-          onClick={() => changeFilter("2026")}
+          className={
+            filter ===
+            "2026"
+              ? "active"
+              : ""
+          }
+          onClick={() =>
+            changeFilter(
+              "2026"
+            )
+          }
         >
           Temporada 2026
+
           <span>
-            {CIRCUITS.filter((circuit) => circuit.season === "2026").length}
+            {
+              CIRCUITS.filter(
+                (
+                  circuit
+                ) =>
+                  circuit.season ===
+                  "2026"
+              ).length
+            }
           </span>
         </button>
+
 
         <button
-          className={filter === "2027" ? "active" : ""}
-          onClick={() => changeFilter("2027")}
+          className={
+            filter ===
+            "2027"
+              ? "active"
+              : ""
+          }
+          onClick={() =>
+            changeFilter(
+              "2027"
+            )
+          }
         >
           Regresan 2027
+
           <span>
-            {CIRCUITS.filter((circuit) => circuit.season === "2027").length}
+            {
+              CIRCUITS.filter(
+                (
+                  circuit
+                ) =>
+                  circuit.season ===
+                  "2027"
+              ).length
+            }
           </span>
         </button>
       </div>
 
+
       <div className="circuits-grid">
-        {visibleCircuits.map((circuit) => (
-          <CircuitCard
-            key={circuit.id}
-            circuit={circuit}
-            expanded={expandedCircuit === circuit.id}
-            stats={statsByCircuit[circuit.id]}
-            onToggle={() => toggleCircuit(circuit)}
-          />
-        ))}
+        {visibleCircuits.map(
+          (
+            circuit
+          ) => (
+            <CircuitCard
+              key={
+                circuit.id
+              }
+              circuit={
+                circuit
+              }
+              expanded={
+                expandedCircuit ===
+                circuit.id
+              }
+              stats={
+                statsByCircuit[
+                  circuit.id
+                ]
+              }
+              onToggle={
+                toggleCircuit
+              }
+            />
+          )
+        )}
       </div>
+
 
       <div className="circuit-sources">
         Datos históricos dinámicos: Jolpica F1. Récords de vuelta: archivo
-        local verificado CircuitRecords.js.         Trazados: MasterPlay007 F1 Track Layouts SVG, MisterSix2295
-        f1-circuits-svg y fuentes SVG de Madring.
+        local verificado CircuitRecords.js. Trazados: MasterPlay007 F1 Track
+        Layouts SVG, MisterSix2295 f1-circuits-svg y fuentes SVG de Madring.
       </div>
     </main>
   );
