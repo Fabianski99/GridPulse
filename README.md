@@ -1,16 +1,34 @@
-# React + Vite
+# GridPulse
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+GridPulse es un proyecto web enfocado en Fórmula 1 y en la visualización de información de la temporada de una forma clara e interactiva.
 
-Currently, two official plugins are available:
+El proyecto reúne calendario, clasificaciones, resultados históricos, circuitos y herramientas de telemetría dentro de una misma interfaz.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Sitio web
 
-## React Compiler
+[https://grid-pulse-mu.vercel.app/](https://grid-pulse-mu.vercel.app/)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Funcionalidades
 
-## Expanding the ESLint configuration
+- Calendario de la temporada 2026 con las próximas carreras.
+- Información del próximo Gran Premio y horarios de las sesiones del fin de semana.
+- Clasificación del campeonato de pilotos y constructores.
+- Consulta de temporadas anteriores desde 2020.
+- Resultados de los Grandes Premios de temporadas anteriores.
+- Campeones de pilotos y constructores por temporada.
+- Sección de circuitos con información, estadísticas y trazados.
+- Visualización de sectores S1, S2 y S3.
+- Numeración de curvas y ubicación de la línea de meta.
+- Comparación de telemetría entre dos pilotos.
+- Gráficos de velocidad, acelerador, freno y diferencia de tiempo.
+- Comparación del ritmo de carrera entre varios pilotos.
+- Diseño adaptado para escritorio y dispositivos móviles.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Tecnologías
+
+- React
+- Vite
+- JavaScript
+- CSS
+- Recharts
+- Vercel
