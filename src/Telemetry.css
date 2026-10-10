@@ -1156,3 +1156,1052 @@
     min-width: 44px;
   }
 }
+
+
+/* ============================================================
+   RITMO DE SESIÓN · STINTS, COLORES DE COMPAÑEROS Y TOOLTIP
+============================================================ */
+
+.pace-driver-grid {
+  align-items: stretch;
+}
+
+.pace-driver-chip {
+  cursor: pointer;
+}
+
+.pace-driver-chip strong {
+  font-size: 14px;
+}
+
+.pace-driver-chip small {
+  font-size: 10px;
+}
+
+.pace-stint-panel {
+  margin-top: 16px;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(0, 245, 212, 0.035), transparent 30%),
+    #0b0d11;
+}
+
+.pace-stint-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 22px;
+  margin-bottom: 14px;
+}
+
+.pace-stint-head span {
+  color: #00f5d4;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+.pace-stint-head h3 {
+  margin: 4px 0 0;
+  font-size: 18px;
+  letter-spacing: -0.45px;
+}
+
+.pace-stint-head small {
+  max-width: 420px;
+  color: #697586;
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: right;
+}
+
+.pace-stint-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pace-stint-card {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid color-mix(in srgb, var(--driver-color) 22%, rgba(255, 255, 255, 0.06));
+  border-radius: 14px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--driver-color) 5%, #0d1014), #090b0e);
+}
+
+.pace-stint-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 0 4px 4px 0;
+  background: var(--driver-color);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--driver-color) 55%, transparent);
+}
+
+.pace-stint-driver {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.pace-stint-driver > i {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 50%;
+  background: var(--driver-color);
+  box-shadow: 0 0 11px color-mix(in srgb, var(--driver-color) 70%, transparent);
+}
+
+.pace-stint-driver strong,
+.pace-stint-driver small {
+  display: block;
+}
+
+.pace-stint-driver strong {
+  color: #f3f5f7;
+  font-size: 13px;
+}
+
+.pace-stint-driver small {
+  margin-top: 2px;
+  color: #657182;
+  font-size: 9px;
+}
+
+.pace-stint-card select {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 10px;
+  color: #e8edf2;
+  background: #101319;
+  outline: 0;
+  font-size: 10px;
+}
+
+.pace-stint-card select:focus {
+  border-color: color-mix(in srgb, var(--driver-color) 55%, transparent);
+}
+
+.pace-stint-card select:disabled {
+  opacity: 0.48;
+}
+
+.pace-stint-compound,
+.pace-compound-pill {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--compound-color) 50%, transparent);
+  border-radius: 999px;
+  color: var(--compound-color);
+  background: color-mix(in srgb, var(--compound-color) 8%, #0c0f13);
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.pace-stint-compound {
+  padding: 5px 8px;
+  font-size: 8px;
+}
+
+.pace-chart-plot {
+  position: relative;
+}
+
+.telemetry-pace-chart {
+  overflow: visible;
+}
+
+.pace-chart-point {
+  cursor: pointer;
+  transition: r 90ms ease, fill-opacity 90ms ease, stroke 90ms ease;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.04));
+}
+
+.pace-point-tooltip {
+  position: absolute;
+  z-index: 12;
+  top: 12px;
+  width: 230px;
+  padding: 13px;
+  border: 1px solid color-mix(in srgb, var(--pace-point-color) 34%, rgba(255, 255, 255, 0.09));
+  border-radius: 14px;
+  background: rgba(8, 10, 13, 0.96);
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.35),
+    0 0 24px color-mix(in srgb, var(--pace-point-color) 10%, transparent);
+  backdrop-filter: blur(14px);
+  pointer-events: none;
+}
+
+.pace-point-tooltip.dock-left {
+  left: 14px;
+  right: auto;
+}
+
+.pace-point-tooltip.dock-right {
+  right: 14px;
+  left: auto;
+}
+
+.pace-point-tooltip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.065);
+}
+
+.pace-point-driver {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pace-point-driver i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--pace-point-color);
+  box-shadow: 0 0 11px color-mix(in srgb, var(--pace-point-color) 75%, transparent);
+}
+
+.pace-point-driver strong {
+  color: #f3f6f8;
+  font-size: 13px;
+}
+
+.pace-point-tooltip-head small {
+  overflow: hidden;
+  max-width: 110px;
+  color: #697586;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pace-point-time {
+  margin: 11px 0;
+  color: #ffffff;
+  font-size: 26px;
+  font-weight: 950;
+  letter-spacing: -1px;
+}
+
+.pace-point-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.pace-point-details > div {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.pace-point-details span,
+.pace-point-details strong {
+  display: block;
+}
+
+.pace-point-details span {
+  color: #657182;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.pace-point-details strong {
+  margin-top: 4px;
+  color: #eef2f5;
+  font-size: 11px;
+}
+
+.pace-point-details .pace-compound-pill {
+  display: inline-flex;
+  margin-top: 5px;
+  padding: 4px 7px;
+  font-size: 8px;
+}
+
+@media (max-width: 1100px) {
+  .pace-stint-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .pace-stint-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .pace-stint-head small {
+    text-align: left;
+  }
+
+  .pace-stint-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pace-point-tooltip {
+    top: 8px;
+    width: min(220px, calc(100% - 16px));
+  }
+
+  .pace-point-tooltip.dock-left {
+    left: 8px;
+  }
+
+  .pace-point-tooltip.dock-right {
+    right: 8px;
+  }
+}
+
+/* ============================================================
+   GRIDPULSE · SELECTORES PERSONALIZADOS + ORDEN/IDENTIDAD V3
+============================================================ */
+
+/* ------------------------------------------------------------
+   Selector personalizado de Gran Premio / Sesión
+------------------------------------------------------------ */
+
+.telemetry-custom-select {
+  position: relative;
+  z-index: 30;
+}
+
+.telemetry-custom-select.open {
+  z-index: 80;
+}
+
+.telemetry-select-trigger {
+  position: relative;
+  width: 100%;
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 0 13px 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.085);
+  border-radius: 12px;
+  color: #eef2f6;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.025), transparent),
+    #101319;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  outline: 0;
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.telemetry-select-trigger > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.telemetry-select-trigger.placeholder {
+  color: #697586;
+}
+
+.telemetry-select-trigger:hover:not(:disabled),
+.telemetry-custom-select.open .telemetry-select-trigger {
+  border-color: rgba(0, 245, 212, 0.38);
+  background:
+    linear-gradient(145deg, rgba(0, 245, 212, 0.045), transparent),
+    #101319;
+  box-shadow: 0 0 0 3px rgba(0, 245, 212, 0.035);
+}
+
+.telemetry-select-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.telemetry-select-trigger > i {
+  position: relative;
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-right: 2px solid #718091;
+  border-bottom: 2px solid #718091;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.18s ease, border-color 0.18s ease;
+}
+
+.telemetry-custom-select.open .telemetry-select-trigger > i {
+  border-color: #00f5d4;
+  transform: translateY(2px) rotate(225deg);
+}
+
+.telemetry-select-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 7px);
+  z-index: 100;
+  max-height: 330px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid rgba(0, 245, 212, 0.18);
+  border-radius: 13px;
+  background: rgba(9, 12, 16, 0.985);
+  box-shadow:
+    0 22px 55px rgba(0, 0, 0, 0.48),
+    0 0 30px rgba(0, 245, 212, 0.035),
+    inset 0 0 25px rgba(255, 255, 255, 0.012);
+  backdrop-filter: blur(16px);
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #39434f #0b0e12;
+}
+
+.telemetry-select-menu::-webkit-scrollbar {
+  width: 8px;
+}
+
+.telemetry-select-menu::-webkit-scrollbar-track {
+  background: #0b0e12;
+  border-radius: 999px;
+}
+
+.telemetry-select-menu::-webkit-scrollbar-thumb {
+  border: 2px solid #0b0e12;
+  border-radius: 999px;
+  background: #39434f;
+}
+
+.telemetry-select-menu::-webkit-scrollbar-thumb:hover {
+  background: #52606f;
+}
+
+.telemetry-select-menu > button {
+  width: 100%;
+  min-height: 39px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 9px;
+  color: #c9d0d9;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.14s ease, background 0.14s ease;
+}
+
+.telemetry-select-menu > button:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.telemetry-select-menu > button.active {
+  color: #00f5d4;
+  background: rgba(0, 245, 212, 0.075);
+}
+
+.telemetry-select-menu > button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.telemetry-select-menu > button b {
+  flex: 0 0 auto;
+  color: #647181;
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+}
+
+.telemetry-select-empty {
+  padding: 13px 11px;
+  color: #657181;
+  font-size: 10px;
+}
+
+/* ------------------------------------------------------------
+   Marcadores de ritmo
+   El color SIEMPRE representa al equipo.
+   La forma diferencia compañeros de escudería.
+------------------------------------------------------------ */
+
+.pace-chart-point {
+  cursor: crosshair;
+}
+
+.pace-chart-hit-area {
+  pointer-events: all;
+  cursor: crosshair;
+}
+
+.pace-chart-point-shape {
+  transition:
+    opacity 0.08s ease,
+    filter 0.08s ease;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.045));
+}
+
+.pace-chart-point:hover .pace-chart-point-shape {
+  filter:
+    drop-shadow(0 0 5px rgba(255, 255, 255, 0.14))
+    drop-shadow(0 0 8px currentColor);
+}
+
+.pace-legend-marker,
+.pace-tooltip-marker {
+  display: inline-block;
+  width: 9px !important;
+  height: 9px !important;
+  flex: 0 0 9px;
+  border-radius: 50%;
+  background: var(--marker-color, var(--pace-point-color)) !important;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--marker-color, var(--pace-point-color)) 65%, transparent) !important;
+}
+
+.pace-legend-marker.diamond,
+.pace-tooltip-marker.diamond {
+  border-radius: 2px !important;
+  transform: rotate(45deg) scale(0.88);
+}
+
+.pace-legend-marker.square,
+.pace-tooltip-marker.square {
+  border-radius: 2px !important;
+}
+
+.pace-legend-marker.triangle,
+.pace-tooltip-marker.triangle {
+  border-radius: 0 !important;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.pace-point-driver .pace-tooltip-marker {
+  --marker-color: var(--pace-point-color);
+}
+
+/* ------------------------------------------------------------
+   Las tarjetas de selección conservan el color puro del equipo.
+------------------------------------------------------------ */
+
+.pace-driver-chip,
+.pace-stint-card {
+  --driver-card-color: var(--driver-color);
+}
+
+/* ------------------------------------------------------------
+   Responsive del menú personalizado
+------------------------------------------------------------ */
+
+@media (max-width: 760px) {
+  .telemetry-select-menu {
+    max-height: 280px;
+  }
+
+  .telemetry-select-trigger {
+    min-height: 45px;
+    font-size: 12px;
+  }
+
+  .telemetry-select-menu > button {
+    min-height: 42px;
+    font-size: 12px;
+  }
+}
+
+/* ============================================================
+   GRIDPULSE · 1V1 LAP FILTER + RICH SELECTS V4
+============================================================ */
+
+/* ------------------------------------------------------------
+   Selector enriquecido
+------------------------------------------------------------ */
+
+.telemetry-select-current,
+.telemetry-select-option-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.telemetry-select-current {
+  flex: 1 1 auto;
+}
+
+.telemetry-select-current-copy,
+.telemetry-select-option-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.telemetry-select-current-copy strong,
+.telemetry-select-option-copy strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #f4f7fa;
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.telemetry-select-current-copy small,
+.telemetry-select-option-copy small {
+  min-width: 0;
+  overflow: hidden;
+  color: #728092;
+  font-size: 10px;
+  font-weight: 550;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.telemetry-select-color {
+  width: 4px;
+  height: 29px;
+  flex: 0 0 4px;
+  border-radius: 999px;
+  background: var(--select-color, #00f5d4);
+  box-shadow: 0 0 11px color-mix(in srgb, var(--select-color, #00f5d4) 70%, transparent);
+}
+
+.telemetry-select-badge {
+  min-width: 31px;
+  height: 25px;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 7px;
+  color: #dfe5eb !important;
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 9px !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.25px !important;
+  text-transform: uppercase;
+}
+
+.telemetry-select-menu > button {
+  min-height: 48px;
+  padding: 8px 11px;
+}
+
+.telemetry-select-menu > button > em {
+  flex: 0 0 auto;
+  color: #00f5d4;
+  font-size: 7px;
+  font-style: normal;
+  font-weight: 950;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+}
+
+/* Anulamos las reglas genéricas antiguas que trataban todos los
+   <span>/<b> del menú como si fueran un único texto plano. */
+.telemetry-select-menu > button .telemetry-select-option-main,
+.telemetry-select-menu > button .telemetry-select-option-copy,
+.telemetry-select-menu > button .telemetry-select-option-copy strong,
+.telemetry-select-menu > button .telemetry-select-option-copy small {
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.telemetry-select-menu > button .telemetry-select-option-copy strong,
+.telemetry-select-menu > button .telemetry-select-option-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.telemetry-select-menu > button .telemetry-select-badge {
+  color: #dfe5eb;
+}
+
+/* ------------------------------------------------------------
+   Selector de pilotos 1v1
+------------------------------------------------------------ */
+
+.telemetry-driver-picker-rich {
+  position: relative;
+  overflow: visible;
+}
+
+.telemetry-driver-select .telemetry-select-trigger {
+  min-height: 54px;
+  padding: 7px 13px;
+  border-color: rgba(255, 255, 255, 0.09);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.03), transparent),
+    #101319;
+}
+
+.telemetry-driver-select .telemetry-select-current-copy strong {
+  font-size: 14px;
+}
+
+.telemetry-driver-select .telemetry-select-current-copy small {
+  font-size: 10px;
+}
+
+.telemetry-driver-select .telemetry-select-menu {
+  max-height: 430px;
+}
+
+.telemetry-driver-select .telemetry-select-menu > button {
+  min-height: 54px;
+}
+
+.telemetry-driver-select .telemetry-select-option-copy strong {
+  font-size: 13px;
+}
+
+.telemetry-driver-select .telemetry-select-option-copy small {
+  font-size: 10px;
+}
+
+.telemetry-driver-picker-rich .telemetry-vs {
+  height: 54px;
+}
+
+.telemetry-driver-picker-rich .telemetry-primary-button {
+  min-height: 54px;
+}
+
+/* ------------------------------------------------------------
+   Panel: filtro por vuelta
+------------------------------------------------------------ */
+
+.lap-filter-panel {
+  position: relative;
+  z-index: 8;
+  margin-top: 14px;
+  padding: 18px;
+  overflow: visible;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(0, 245, 212, 0.045), transparent 34%),
+    linear-gradient(145deg, #0c1014, #090b0e);
+}
+
+.lap-filter-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 14px;
+}
+
+.lap-filter-head > div > span {
+  display: block;
+  color: #00f5d4;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+.lap-filter-head h3 {
+  margin: 4px 0 0;
+  color: #f4f7fa;
+  font-size: 19px;
+  letter-spacing: -0.45px;
+}
+
+.lap-filter-head small {
+  max-width: 480px;
+  color: #718091;
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: right;
+}
+
+.lap-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.lap-filter-card {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(110px, 0.34fr) minmax(250px, 1fr);
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  overflow: visible;
+  border: 1px solid color-mix(in srgb, var(--driver-color) 24%, rgba(255, 255, 255, 0.06));
+  border-radius: 15px;
+  background:
+    radial-gradient(circle at 0% 50%, color-mix(in srgb, var(--driver-color) 8%, transparent), transparent 42%),
+    #0b0e12;
+}
+
+.lap-filter-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 13px;
+  bottom: 13px;
+  width: 3px;
+  border-radius: 0 4px 4px 0;
+  background: var(--driver-color);
+  box-shadow: 0 0 13px color-mix(in srgb, var(--driver-color) 65%, transparent);
+}
+
+.lap-filter-driver {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 3px;
+}
+
+.lap-filter-driver > i {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border-radius: 50%;
+  background: var(--driver-color);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--driver-color) 70%, transparent);
+}
+
+.lap-filter-driver span,
+.lap-filter-driver strong,
+.lap-filter-driver small {
+  display: block;
+}
+
+.lap-filter-driver span {
+  color: #647181;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+}
+
+.lap-filter-driver strong {
+  margin-top: 2px;
+  color: #f5f7fa;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.lap-filter-driver small {
+  margin-top: 4px;
+  overflow: hidden;
+  color: #728092;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.telemetry-lap-select {
+  min-width: 0;
+}
+
+.telemetry-lap-select .telemetry-select-trigger {
+  min-height: 52px;
+  padding: 7px 12px;
+}
+
+.telemetry-lap-select .telemetry-select-menu {
+  max-height: 390px;
+}
+
+.telemetry-lap-select .telemetry-select-menu > button {
+  min-height: 54px;
+}
+
+.telemetry-lap-select .telemetry-select-option-copy strong {
+  font-size: 13px;
+}
+
+.telemetry-lap-select .telemetry-select-option-copy small {
+  font-size: 10px;
+}
+
+.lap-filter-summary {
+  grid-column: 1 / -1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.lap-filter-summary > strong {
+  color: #f4f7fa;
+  font-size: 13px;
+}
+
+.lap-filter-summary > small {
+  min-width: 0;
+  overflow: hidden;
+  color: #718091;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lap-compound-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--compound-color) 52%, transparent);
+  border-radius: 999px;
+  color: var(--compound-color);
+  background: color-mix(in srgb, var(--compound-color) 8%, #0c0f13);
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: 0.5px;
+}
+
+/* ------------------------------------------------------------
+   Stint dropdown: mismo diseño, tipografía más grande
+------------------------------------------------------------ */
+
+.pace-stint-card {
+  overflow: visible;
+}
+
+.pace-stint-card .pace-stint-select {
+  position: relative;
+  z-index: 35;
+}
+
+.pace-stint-card .pace-stint-select.open {
+  z-index: 120;
+}
+
+.pace-stint-select .telemetry-select-trigger {
+  min-height: 46px;
+  padding: 7px 11px;
+}
+
+.pace-stint-select .telemetry-select-current-copy strong {
+  font-size: 12px;
+}
+
+.pace-stint-select .telemetry-select-current-copy small {
+  font-size: 10px;
+}
+
+.pace-stint-select .telemetry-select-menu {
+  min-width: 310px;
+  max-height: 360px;
+}
+
+.pace-stint-select .telemetry-select-menu > button {
+  min-height: 51px;
+  padding: 8px 10px;
+}
+
+.pace-stint-select .telemetry-select-option-copy strong {
+  font-size: 13px;
+}
+
+.pace-stint-select .telemetry-select-option-copy small {
+  font-size: 10px;
+}
+
+/* ------------------------------------------------------------
+   Responsive
+------------------------------------------------------------ */
+
+@media (max-width: 1050px) {
+  .lap-filter-card {
+    grid-template-columns: 1fr;
+  }
+
+  .lap-filter-summary {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 760px) {
+  .lap-filter-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .lap-filter-head small {
+    text-align: left;
+  }
+
+  .lap-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .telemetry-driver-select .telemetry-select-menu,
+  .telemetry-lap-select .telemetry-select-menu,
+  .pace-stint-select .telemetry-select-menu {
+    max-height: 300px;
+  }
+
+  .pace-stint-select .telemetry-select-menu {
+    min-width: 100%;
+  }
+}
+
+
+/* ============================================================
+   TELEMETRÍA 1V1 · COMPAÑEROS DE EQUIPO / RATE-LIMIT V4
+============================================================ */
+
+.telemetry-chart-legend i.dashed {
+  flex: 0 0 auto;
+  box-shadow: 0 0 8px currentColor;
+}
+
+/*
+  La segunda línea de un mismo equipo usa un tono más claro y trazo
+  discontinuo desde JSX. El selector y las tarjetas siguen usando el
+  color oficial del equipo sin alteraciones.
+*/
+.telemetry-series-line[stroke-dasharray] {
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.08));
+}

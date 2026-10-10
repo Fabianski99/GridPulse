@@ -6,6 +6,22 @@ const YEAR = 2026;
 const LIVE_REFRESH_MS = 10000;
 const MAX_PACE_DRIVERS = 8;
 const CAR_DATA_CACHE = new Map();
+const PACE_DATA_CACHE = new Map();
+
+/*
+  OpenF1 free tier: evitamos ráfagas de peticiones y reutilizamos
+  solicitudes idénticas. Esto es especialmente importante al cargar
+  vueltas + stints + car_data casi al mismo tiempo.
+*/
+const OPENF1_INFLIGHT = new Map();
+const OPENF1_RESPONSE_CACHE = new Map();
+const OPENF1_CACHE_TTL_MS = 5 * 60 * 1000;
+const OPENF1_HISTORICAL_GAP_MS = 380;
+const OPENF1_LIVE_GAP_MS = 190;
+const OPENF1_MAX_RETRIES = 3;
+
+let openF1Queue = Promise.resolve();
+let lastOpenF1RequestAt = 0;
 
 const FALLBACK_COLORS = [
   "#00f5d4",
@@ -45,6 +61,66 @@ function createQuery(params = {}) {
   return query;
 }
 
+function wait(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function cacheableOpenF1Endpoint(endpoint, live) {
+  if (live) return false;
+
+  return [
+    "meetings",
+    "sessions",
+    "drivers",
+    "laps",
+    "stints",
+  ].includes(endpoint);
+}
+
+function retryDelayFromResponse(response, attempt) {
+  const retryAfter = response?.headers?.get?.("Retry-After");
+
+  if (retryAfter) {
+    const numeric = Number(retryAfter);
+
+    if (Number.isFinite(numeric)) {
+      return Math.max(500, numeric * 1000);
+    }
+
+    const date = new Date(retryAfter).getTime();
+    const delay = date - Date.now();
+
+    if (Number.isFinite(delay) && delay > 0) {
+      return delay;
+    }
+  }
+
+  return Math.min(4000, 850 * 2 ** attempt);
+}
+
+function scheduleOpenF1Request(task, live = false) {
+  const minGap = live ? OPENF1_LIVE_GAP_MS : OPENF1_HISTORICAL_GAP_MS;
+
+  const run = async () => {
+    const elapsed = Date.now() - lastOpenF1RequestAt;
+    const remaining = Math.max(0, minGap - elapsed);
+
+    if (remaining > 0) {
+      await wait(remaining);
+    }
+
+    lastOpenF1RequestAt = Date.now();
+    return task();
+  };
+
+  const scheduled = openF1Queue.then(run, run);
+
+  // La cola no debe quedar rota si una petición falla.
+  openF1Queue = scheduled.catch(() => undefined);
+
+  return scheduled;
+}
+
 async function openF1(endpoint, params = {}, { live = false } = {}) {
   const query = createQuery(params);
 
@@ -58,22 +134,75 @@ async function openF1(endpoint, params = {}, { live = false } = {}) {
     url = `${OPENF1}/${endpoint}?${query.toString()}`;
   }
 
-  const response = await fetch(url);
+  const requestKey = `${live ? "live" : "history"}:${url}`;
+  const canCache = cacheableOpenF1Endpoint(endpoint, live);
 
-  if (!response.ok) {
-    let detail = "";
+  if (canCache) {
+    const cached = OPENF1_RESPONSE_CACHE.get(requestKey);
 
-    try {
-      const payload = await response.json();
-      detail = payload?.error || payload?.detail || "";
-    } catch {
-      detail = await response.text();
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
     }
-
-    throw new Error(detail || `OpenF1 respondió ${response.status}`);
   }
 
-  return response.json();
+  const inflight = OPENF1_INFLIGHT.get(requestKey);
+  if (inflight) return inflight;
+
+  const requestPromise = scheduleOpenF1Request(async () => {
+    let lastError = null;
+
+    for (let attempt = 0; attempt < OPENF1_MAX_RETRIES; attempt += 1) {
+      const response = await fetch(url);
+
+      if (response.status === 429) {
+        const delay = retryDelayFromResponse(response, attempt);
+
+        if (attempt < OPENF1_MAX_RETRIES - 1) {
+          await wait(delay);
+          lastOpenF1RequestAt = Date.now();
+          continue;
+        }
+
+        throw new Error(
+          "OpenF1 alcanzó temporalmente el límite de peticiones. Espera unos segundos y vuelve a comparar."
+        );
+      }
+
+      if (!response.ok) {
+        let detail = "";
+
+        try {
+          const payload = await response.json();
+          detail = payload?.error || payload?.detail || "";
+        } catch {
+          detail = await response.text();
+        }
+
+        throw new Error(detail || `OpenF1 respondió ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (canCache) {
+        OPENF1_RESPONSE_CACHE.set(requestKey, {
+          data,
+          expiresAt: Date.now() + OPENF1_CACHE_TTL_MS,
+        });
+      }
+
+      return data;
+    }
+
+    throw lastError || new Error("No fue posible consultar OpenF1.");
+  }, live);
+
+  OPENF1_INFLIGHT.set(requestKey, requestPromise);
+
+  try {
+    return await requestPromise;
+  } finally {
+    OPENF1_INFLIGHT.delete(requestKey);
+  }
 }
 
 function safeNumber(value) {
@@ -122,6 +251,205 @@ function driverColor(driver, index = 0) {
   return FALLBACK_COLORS[index % FALLBACK_COLORS.length];
 }
 
+
+function normalizeHexColor(color) {
+  const value = String(color || "").replace("#", "");
+  return /^[0-9a-fA-F]{6}$/.test(value) ? value : null;
+}
+
+function mixHexColor(colorA, colorB = "#ffffff", amount = 0.38) {
+  const a = normalizeHexColor(colorA);
+  const b = normalizeHexColor(colorB);
+
+  if (!a || !b) return colorA;
+
+  const ratio = Math.max(0, Math.min(1, Number(amount)));
+  const channels = [0, 2, 4].map((offset) => {
+    const from = parseInt(a.slice(offset, offset + 2), 16);
+    const to = parseInt(b.slice(offset, offset + 2), 16);
+    return Math.round(from + (to - from) * ratio)
+      .toString(16)
+      .padStart(2, "0");
+  });
+
+  return `#${channels.join("")}`;
+}
+
+function sameTeam(driverA, driverB) {
+  const teamA = String(driverA?.team_name || "").trim().toLowerCase();
+  const teamB = String(driverB?.team_name || "").trim().toLowerCase();
+
+  return Boolean(teamA && teamB && teamA === teamB);
+}
+
+/*
+  En tarjetas/selectores mantenemos el color oficial del equipo.
+  Solo en los gráficos 1v1 diferenciamos a compañeros de equipo:
+  A = color oficial sólido, B = variante más clara y discontinua.
+*/
+function comparisonChartStyle(driver, otherDriver, slot = "A", fallbackIndex = 0) {
+  const baseColor = driverColor(driver, fallbackIndex);
+
+  if (!sameTeam(driver, otherDriver)) {
+    return {
+      color: baseColor,
+      dash: null,
+    };
+  }
+
+  if (slot === "B") {
+    return {
+      color: mixHexColor(baseColor, "#ffffff", 0.42),
+      dash: "10 7",
+    };
+  }
+
+  return {
+    color: baseColor,
+    dash: null,
+  };
+}
+
+const TEAM_PRIORITY = [
+  "Ferrari",
+  "Mercedes",
+  "Red Bull Racing",
+  "McLaren",
+];
+
+function teamOrder(driver) {
+  const team = String(driver?.team_name || "Sin equipo");
+  const priority = TEAM_PRIORITY.indexOf(team);
+
+  return {
+    team,
+    priority: priority === -1 ? TEAM_PRIORITY.length : priority,
+  };
+}
+
+function compareDriversByTeam(a, b) {
+  const teamA = teamOrder(a);
+  const teamB = teamOrder(b);
+
+  if (teamA.priority !== teamB.priority) {
+    return teamA.priority - teamB.priority;
+  }
+
+  if (teamA.priority >= TEAM_PRIORITY.length) {
+    const teamCompare = teamA.team.localeCompare(teamB.team, "es", {
+      sensitivity: "base",
+    });
+
+    if (teamCompare !== 0) return teamCompare;
+  }
+
+  const nameA = String(
+    a?.name_acronym || a?.broadcast_name || a?.driver_number || ""
+  );
+  const nameB = String(
+    b?.name_acronym || b?.broadcast_name || b?.driver_number || ""
+  );
+
+  return nameA.localeCompare(nameB, "es", { sensitivity: "base" });
+}
+
+/*
+  Las tarjetas siempre conservan exactamente el color del equipo.
+  Si hay compañeros de escudería, se distinguen SOLO en el gráfico
+  mediante la forma del marcador.
+*/
+function paceDriverColor(driver, visibleDrivers = [], fallbackIndex = 0) {
+  return driverColor(driver, fallbackIndex);
+}
+
+function paceDriverMarker(driver, visibleDrivers = []) {
+  const team = String(driver?.team_name || "");
+  if (!team) return "circle";
+
+  const teammates = visibleDrivers.filter(
+    (item) => String(item?.team_name || "") === team
+  );
+
+  if (teammates.length <= 1) return "circle";
+
+  const teammateIndex = teammates.findIndex(
+    (item) => Number(item.driver_number) === Number(driver?.driver_number)
+  );
+
+  const markers = ["circle", "diamond", "square", "triangle"];
+  return markers[Math.max(0, teammateIndex) % markers.length];
+}
+
+function normalizeCompound(compound) {
+  return String(compound || "—").toUpperCase();
+}
+
+function compoundColor(compound) {
+  const key = normalizeCompound(compound);
+  const colors = {
+    SOFT: "#ff3b4f",
+    MEDIUM: "#ffd43b",
+    HARD: "#f1f3f5",
+    INTERMEDIATE: "#43d17a",
+    WET: "#4f8cff",
+  };
+
+  return colors[key] || "#8792a2";
+}
+
+function driverStints(stints, driverNumber) {
+  const seen = new Set();
+
+  return stints
+    .filter((stint) => Number(stint.driver_number) === Number(driverNumber))
+    .filter((stint) => {
+      const number = Number(stint.stint_number);
+      if (!Number.isFinite(number) || seen.has(number)) return false;
+      seen.add(number);
+      return true;
+    })
+    .sort((a, b) => Number(a.stint_number) - Number(b.stint_number));
+}
+
+function stintLabel(stint) {
+  const number = Number(stint?.stint_number);
+  const start =
+    stint?.lap_start === null || stint?.lap_start === undefined
+      ? null
+      : Number(stint.lap_start);
+  const end =
+    stint?.lap_end === null || stint?.lap_end === undefined
+      ? null
+      : Number(stint.lap_end);
+  const compound = normalizeCompound(stint?.compound);
+  const laps = Number.isFinite(start)
+    ? `V${start}${Number.isFinite(end) ? `–V${end}` : "+"}`
+    : "vueltas sin rango";
+
+  return `Stint ${Number.isFinite(number) ? number : "—"} · ${compound} · ${laps}`;
+}
+
+async function fetchPaceData(sessionKey, liveMode) {
+  const cacheKey = String(sessionKey);
+
+  if (!liveMode && PACE_DATA_CACHE.has(cacheKey)) {
+    return PACE_DATA_CACHE.get(cacheKey);
+  }
+
+  const [laps, stints] = await Promise.all([
+    openF1("laps", { session_key: sessionKey }, { live: liveMode }),
+    openF1("stints", { session_key: sessionKey }, { live: liveMode }).catch(() => []),
+  ]);
+
+  const payload = {
+    laps: Array.isArray(laps) ? laps : [],
+    stints: Array.isArray(stints) ? stints : [],
+  };
+
+  if (!liveMode) PACE_DATA_CACHE.set(cacheKey, payload);
+  return payload;
+}
+
 function driverLabel(driver) {
   if (!driver) return "Piloto";
   return `${driver.name_acronym || driver.driver_number} · ${driver.full_name || driver.broadcast_name}`;
@@ -141,15 +469,63 @@ function median(values) {
     : (valid[middle - 1] + valid[middle]) / 2;
 }
 
-function fastestLapForDriver(laps, driverNumber) {
-  return laps
+function isTelemetryLap(lap) {
+  const duration = Number(lap?.lap_duration);
+  const start = new Date(lap?.date_start || "").getTime();
+
+  return (
+    Number.isFinite(duration) &&
+    duration > 0 &&
+    Number.isFinite(start) &&
+    !lap?.is_pit_out_lap
+  );
+}
+
+function timedLapsForDriver(laps, driverNumber) {
+  return (Array.isArray(laps) ? laps : [])
     .filter(
       (lap) =>
         Number(lap.driver_number) === Number(driverNumber) &&
-        Number.isFinite(Number(lap.lap_duration)) &&
-        !lap.is_pit_out_lap
+        isTelemetryLap(lap)
     )
-    .sort((a, b) => Number(a.lap_duration) - Number(b.lap_duration))[0];
+    .sort((a, b) => Number(a.lap_number) - Number(b.lap_number));
+}
+
+function fastestLapForDriver(laps, driverNumber) {
+  return [...timedLapsForDriver(laps, driverNumber)].sort(
+    (a, b) => Number(a.lap_duration) - Number(b.lap_duration)
+  )[0];
+}
+
+function lapOptionData(lap, stints, driverNumber) {
+  const tyre = getCompoundForLap(stints, driverNumber, lap?.lap_number);
+
+  return {
+    lap,
+    compound: normalizeCompound(tyre?.compound),
+    stintNumber: tyre?.stintNumber ?? null,
+    tyreAge: tyre?.tyreAge ?? null,
+  };
+}
+
+function lapOptionLabel(item) {
+  if (!item?.lap) return "Selecciona una vuelta";
+
+  return `V${item.lap.lap_number} · ${formatLapTime(item.lap.lap_duration)} · ${item.compound}`;
+}
+
+function lapOptionMeta(item) {
+  const bits = [];
+
+  if (item?.stintNumber !== null && item?.stintNumber !== undefined) {
+    bits.push(`Stint ${item.stintNumber}`);
+  }
+
+  if (item?.tyreAge !== null && item?.tyreAge !== undefined) {
+    bits.push(`neumático ${item.tyreAge} v`);
+  }
+
+  return bits.join(" · ");
 }
 
 function endOfLap(lap) {
@@ -169,27 +545,72 @@ function endOfLapWithMargin(lap, marginMs = 5000) {
   return new Date(start + duration + marginMs).toISOString();
 }
 
-function rowsInsideLap(rows, lap, marginMs = 2500) {
+function lapTimeWindow(lap, allLaps = [], driverNumber, marginMs = 6500) {
+  const start = new Date(lap?.date_start || "").getTime();
+  const duration = Number(lap?.lap_duration) * 1000;
+
+  if (!Number.isFinite(start) || !Number.isFinite(duration) || duration <= 0) {
+    return null;
+  }
+
+  const ownLaps = timedLapsForDriver(allLaps, driverNumber);
+  const currentIndex = ownLaps.findIndex(
+    (item) => Number(item.lap_number) === Number(lap.lap_number)
+  );
+
+  const nextStart =
+    currentIndex >= 0 && ownLaps[currentIndex + 1]?.date_start
+      ? new Date(ownLaps[currentIndex + 1].date_start).getTime()
+      : null;
+
+  const nominalEnd = start + duration;
+  const safeNextEnd =
+    Number.isFinite(nextStart) && nextStart > start
+      ? nextStart + 1500
+      : nominalEnd + marginMs;
+
+  return {
+    start,
+    end: Math.max(nominalEnd + 2500, safeNextEnd),
+    queryStart: start - marginMs,
+    queryEnd: Math.max(nominalEnd + marginMs, safeNextEnd),
+  };
+}
+
+function rowsInsideLap(rows, lap, allLaps = [], driverNumber, marginMs = 6500) {
   if (!Array.isArray(rows) || !lap?.date_start) return [];
 
-  const start = new Date(lap.date_start).getTime() - marginMs;
-  const end =
-    new Date(lap.date_start).getTime() +
-    Number(lap.lap_duration) * 1000 +
-    marginMs;
+  const window = lapTimeWindow(lap, allLaps, driverNumber, marginMs);
+  if (!window) return [];
 
   return rows.filter((row) => {
     const timestamp = new Date(row.date).getTime();
-    return Number.isFinite(timestamp) && timestamp >= start && timestamp <= end;
+    return (
+      Number.isFinite(timestamp) &&
+      timestamp >= window.queryStart &&
+      timestamp <= window.queryEnd
+    );
   });
 }
 
-async function fetchCarDataForLap(sessionKey, driverNumber, lap, liveMode) {
+async function fetchCarDataForLap(
+  sessionKey,
+  driverNumber,
+  lap,
+  liveMode,
+  allLaps = []
+) {
+  const window = lapTimeWindow(lap, allLaps, driverNumber);
+
+  if (!window) {
+    throw new Error(`La vuelta V${lap?.lap_number || "—"} no tiene un rango temporal válido.`);
+  }
+
   const narrowParams = {
     session_key: sessionKey,
     driver_number: driverNumber,
-    "date>=": startOfLapWithMargin(lap),
-    "date<=": endOfLapWithMargin(lap),
+    "date>=": new Date(window.queryStart).toISOString(),
+    "date<=": new Date(window.queryEnd).toISOString(),
   };
 
   try {
@@ -199,7 +620,7 @@ async function fetchCarDataForLap(sessionKey, driverNumber, lap, liveMode) {
       { live: liveMode }
     );
 
-    if (Array.isArray(narrow) && narrow.length >= 10) {
+    if (Array.isArray(narrow) && narrow.length >= 18) {
       return narrow;
     }
   } catch (error) {
@@ -213,9 +634,8 @@ async function fetchCarDataForLap(sessionKey, driverNumber, lap, liveMode) {
     }
   }
 
-  // Respaldo: algunos históricos de OpenF1 no responden bien a la
-  // combinación de filtros por fecha. En ese caso descargamos solo la
-  // telemetría del piloto en la sesión y recortamos la vuelta localmente.
+  // Respaldo histórico: descargamos una sola vez la telemetría completa
+  // del piloto para esa sesión y después recortamos localmente cada vuelta.
   const cacheKey = `${sessionKey}-${driverNumber}`;
   let fullSession = !liveMode ? CAR_DATA_CACHE.get(cacheKey) : null;
 
@@ -234,11 +654,11 @@ async function fetchCarDataForLap(sessionKey, driverNumber, lap, liveMode) {
     }
   }
 
-  const sliced = rowsInsideLap(fullSession, lap);
+  const sliced = rowsInsideLap(fullSession, lap, allLaps, driverNumber);
 
-  if (sliced.length < 10) {
+  if (sliced.length < 18) {
     throw new Error(
-      `OpenF1 no devolvió telemetría suficiente para la vuelta de ${driverNumber}.`
+      `OpenF1 no devolvió telemetría suficiente para ${driverNumber} en la vuelta ${lap.lap_number}. Prueba otra vuelta del selector.`
     );
   }
 
@@ -249,8 +669,13 @@ function prepareTelemetry(rows, lap) {
   if (!rows?.length || !lap?.date_start) return [];
 
   const start = new Date(lap.date_start).getTime();
+  const durationMs = Number(lap.lap_duration) * 1000;
 
-  const clean = rows
+  if (!Number.isFinite(start) || !Number.isFinite(durationMs) || durationMs <= 0) {
+    return [];
+  }
+
+  const mapped = rows
     .map((row) => ({
       ...row,
       timestamp: new Date(row.date).getTime(),
@@ -261,18 +686,30 @@ function prepareTelemetry(rows, lap) {
       n_gear: safeNumber(row.n_gear),
       drs: safeNumber(row.drs),
     }))
-    .filter(
-      (row) =>
-        Number.isFinite(row.timestamp) &&
-        row.timestamp >= start - 500 &&
-        row.timestamp <= start + Number(lap.lap_duration) * 1000 + 1000
-    )
+    .filter((row) => Number.isFinite(row.timestamp))
     .sort((a, b) => a.timestamp - b.timestamp);
+
+  let clean = mapped.filter(
+    (row) =>
+      row.timestamp >= start - 2500 &&
+      row.timestamp <= start + durationMs + 3500
+  );
+
+  // date_start es aproximado en OpenF1. Si la ventana normal queda corta,
+  // ampliamos únicamente como respaldo en lugar de descartar la vuelta.
+  if (clean.length < 10) {
+    clean = mapped.filter(
+      (row) =>
+        row.timestamp >= start - 10000 &&
+        row.timestamp <= start + durationMs + 10000
+    );
+  }
 
   if (clean.length < 2) return [];
 
   let distance = 0;
   let previous = clean[0];
+  const telemetryStart = clean[0].timestamp;
 
   const enriched = clean.map((row, index) => {
     if (index > 0) {
@@ -287,7 +724,7 @@ function prepareTelemetry(rows, lap) {
 
     return {
       ...row,
-      elapsed: Math.max((row.timestamp - start) / 1000, 0),
+      elapsed: Math.max((row.timestamp - telemetryStart) / 1000, 0),
       distance,
     };
   });
@@ -302,7 +739,9 @@ function prepareTelemetry(rows, lap) {
   if (normalized.length <= 420) return normalized;
 
   const step = Math.ceil(normalized.length / 420);
-  return normalized.filter((_, index) => index % step === 0 || index === normalized.length - 1);
+  return normalized.filter(
+    (_, index) => index % step === 0 || index === normalized.length - 1
+  );
 }
 
 function interpolateAtProgress(points, progress, key) {
@@ -398,7 +837,13 @@ function getCompoundForLap(stints, driverNumber, lapNumber) {
   };
 }
 
-function buildRacePace(laps, stints, selectedDrivers, filterSlow) {
+function buildRacePace(
+  laps,
+  stints,
+  selectedDrivers,
+  filterSlow,
+  stintSelection = {}
+) {
   const selected = new Set(selectedDrivers.map(Number));
   const byDriver = new Map();
 
@@ -412,8 +857,26 @@ function buildRacePace(laps, stints, selectedDrivers, filterSlow) {
     if (!Number.isFinite(lapNumber) || lapNumber <= 1) return;
     if (lap.is_pit_out_lap) return;
 
+    const tyre = getCompoundForLap(stints, driverNumber, lapNumber);
+    const wantedStint = String(stintSelection[driverNumber] ?? "all");
+
+    if (
+      wantedStint !== "all" &&
+      String(tyre?.stintNumber ?? "") !== wantedStint
+    ) {
+      return;
+    }
+
     if (!byDriver.has(driverNumber)) byDriver.set(driverNumber, []);
-    byDriver.get(driverNumber).push({ ...lap, lap_duration: duration, lap_number: lapNumber });
+
+    byDriver.get(driverNumber).push({
+      ...lap,
+      lap_duration: duration,
+      lap_number: lapNumber,
+      compound: normalizeCompound(tyre?.compound),
+      tyreAge: tyre?.tyreAge ?? null,
+      stintNumber: tyre?.stintNumber ?? null,
+    });
   });
 
   const result = [];
@@ -426,19 +889,21 @@ function buildRacePace(laps, stints, selectedDrivers, filterSlow) {
     });
 
     filtered.forEach((lap) => {
-      const tyre = getCompoundForLap(stints, driverNumber, lap.lap_number);
       result.push({
         driverNumber,
         lapNumber: lap.lap_number,
         lapTime: lap.lap_duration,
-        compound: tyre?.compound || "—",
-        tyreAge: tyre?.tyreAge ?? null,
-        stintNumber: tyre?.stintNumber ?? null,
+        compound: lap.compound || "—",
+        tyreAge: lap.tyreAge,
+        stintNumber: lap.stintNumber,
       });
     });
   });
 
-  return result;
+  return result.sort((a, b) => {
+    if (a.lapNumber !== b.lapNumber) return a.lapNumber - b.lapNumber;
+    return a.driverNumber - b.driverNumber;
+  });
 }
 
 function medianAbsoluteDeviation(values) {
@@ -603,14 +1068,130 @@ function buildPaceAnalysis(points, drivers) {
   };
 }
 
-function SelectField({ label, value, onChange, children, disabled = false }) {
+function TelemetrySelect({
+  label,
+  value,
+  options,
+  placeholder,
+  onChange,
+  disabled = false,
+  className = "",
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  const selected = options.find(
+    (option) => String(option.value) === String(value)
+  );
+
+  useEffect(() => {
+    function handlePointerDown(event) {
+      if (!rootRef.current?.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") setOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
+
   return (
-    <label className="telemetry-field">
-      <span>{label}</span>
-      <select value={value} onChange={onChange} disabled={disabled}>
-        {children}
-      </select>
-    </label>
+    <div
+      ref={rootRef}
+      className={`telemetry-field telemetry-custom-select ${className} ${open ? "open" : ""}`}
+    >
+      {label ? <span>{label}</span> : null}
+
+      <button
+        type="button"
+        className={`telemetry-select-trigger ${!value ? "placeholder" : ""}`}
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className="telemetry-select-current">
+          {selected?.color ? (
+            <i
+              className="telemetry-select-color"
+              style={{ "--select-color": selected.color }}
+              aria-hidden="true"
+            />
+          ) : null}
+
+          {selected?.badge ? (
+            <b className="telemetry-select-badge">{selected.badge}</b>
+          ) : null}
+
+          <span className="telemetry-select-current-copy">
+            <strong>{selected?.label || placeholder}</strong>
+            {selected?.meta ? <small>{selected.meta}</small> : null}
+          </span>
+        </span>
+
+        <i className="telemetry-select-chevron" aria-hidden="true" />
+      </button>
+
+      {open && (
+        <div className="telemetry-select-menu" role="listbox">
+          {options.length ? (
+            options.map((option) => {
+              const active = String(option.value) === String(value);
+
+              return (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  key={option.value}
+                  className={active ? "active" : ""}
+                  onClick={() => {
+                    onChange(String(option.value));
+                    setOpen(false);
+                  }}
+                >
+                  <span className="telemetry-select-option-main">
+                    {option.color ? (
+                      <i
+                        className="telemetry-select-color"
+                        style={{ "--select-color": option.color }}
+                        aria-hidden="true"
+                      />
+                    ) : null}
+
+                    {option.badge ? (
+                      <b className="telemetry-select-badge">{option.badge}</b>
+                    ) : null}
+
+                    <span className="telemetry-select-option-copy">
+                      <strong>{option.label}</strong>
+                      {option.meta ? <small>{option.meta}</small> : null}
+                    </span>
+                  </span>
+
+                  {active ? <em>Seleccionado</em> : null}
+                </button>
+              );
+            })
+          ) : (
+            <div className="telemetry-select-empty">Sin opciones disponibles</div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -687,6 +1268,7 @@ function LineChart({
           : {
               label: item.label,
               color: item.color,
+              dash: item.dash || null,
               value,
               chartY: y(value),
             };
@@ -800,7 +1382,15 @@ function LineChart({
         <div className="telemetry-chart-legend">
           {series.map((item) => (
             <span key={item.label} className={hover?.activeLabel === item.label ? "active" : ""}>
-              <i style={{ background: item.color }} />
+              <i
+                className={item.dash ? "dashed" : ""}
+                style={{
+                  background: item.color,
+                  width: item.dash ? 16 : 8,
+                  height: item.dash ? 3 : 8,
+                  borderRadius: item.dash ? 999 : "50%",
+                }}
+              />
               {item.label}
             </span>
           ))}
@@ -868,6 +1458,7 @@ function LineChart({
                 fill="none"
                 stroke={item.color}
                 strokeWidth={hover?.activeLabel === item.label ? "4.5" : "3.2"}
+                strokeDasharray={item.dash || undefined}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 className={`telemetry-series-line ${
@@ -981,6 +1572,8 @@ function LineChart({
 }
 
 function RacePaceChart({ points, drivers }) {
+  const [hoverPoint, setHoverPoint] = useState(null);
+
   const width = 1000;
   const height = 510;
   const pad = { left: 72, right: 24, top: 22, bottom: 48 };
@@ -1002,10 +1595,31 @@ function RacePaceChart({ points, drivers }) {
 
   const x = (lap) =>
     pad.left + ((Number(lap) - minLap) / Math.max(maxLap - minLap, 1)) * innerWidth;
-  const y = (time) => pad.top + ((Number(time) - minTime) / Math.max(maxTime - minTime, 0.1)) * innerHeight;
 
-  const yGrid = Array.from({ length: 6 }, (_, index) => minTime + ((maxTime - minTime) * index) / 5);
-  const driverMap = new Map(drivers.map((driver, index) => [Number(driver.driver_number), { driver, index }]));
+  // En este gráfico los tiempos más rápidos se muestran más abajo.
+  const y = (time) =>
+    pad.top + ((maxTime - Number(time)) / Math.max(maxTime - minTime, 0.1)) * innerHeight;
+
+  const yGrid = Array.from(
+    { length: 6 },
+    (_, index) => maxTime - ((maxTime - minTime) * index) / 5
+  );
+
+  const driverMap = new Map(
+    drivers.map((driver, index) => [
+      Number(driver.driver_number),
+      {
+        driver,
+        index,
+        color: paceDriverColor(driver, drivers, index),
+        marker: paceDriverMarker(driver, drivers),
+      },
+    ])
+  );
+
+  const hoverKey = hoverPoint
+    ? `${hoverPoint.driverNumber}-${hoverPoint.lapNumber}`
+    : null;
 
   return (
     <div className="pace-chart-card">
@@ -1017,75 +1631,200 @@ function RacePaceChart({ points, drivers }) {
         <div className="telemetry-chart-legend multi">
           {drivers.map((driver, index) => (
             <span key={driver.driver_number}>
-              <i style={{ background: driverColor(driver, index) }} />
+              <i
+                className={`pace-legend-marker ${paceDriverMarker(driver, drivers)}`}
+                style={{ "--marker-color": paceDriverColor(driver, drivers, index) }}
+              />
               {driver.name_acronym}
             </span>
           ))}
         </div>
       </div>
 
-      <svg className="telemetry-pace-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Ritmo de carrera por vuelta">
-        {yGrid.map((value, index) => (
-          <g key={index}>
-            <line
-              x1={pad.left}
-              x2={width - pad.right}
-              y1={y(value)}
-              y2={y(value)}
-              className="telemetry-grid-line"
-            />
-            <text x={pad.left - 12} y={y(value) + 4} className="telemetry-axis-text" textAnchor="end">
-              {formatLapTime(value)}
-            </text>
-          </g>
-        ))}
-
-        {Array.from({ length: 7 }, (_, index) => {
-          const lap = Math.round(minLap + ((maxLap - minLap) * index) / 6);
-          return (
-            <g key={`${lap}-${index}`}>
+      <div className="pace-chart-plot">
+        <svg
+          className="telemetry-pace-chart"
+          viewBox={`0 0 ${width} ${height}`}
+          role="img"
+          aria-label="Ritmo de carrera por vuelta"
+        >
+          {yGrid.map((value, index) => (
+            <g key={index}>
               <line
-                x1={x(lap)}
-                x2={x(lap)}
-                y1={pad.top}
-                y2={height - pad.bottom}
-                className="telemetry-grid-line vertical"
+                x1={pad.left}
+                x2={width - pad.right}
+                y1={y(value)}
+                y2={y(value)}
+                className="telemetry-grid-line"
               />
-              <text x={x(lap)} y={height - 15} className="telemetry-axis-text" textAnchor="middle">
-                V{lap}
+              <text
+                x={pad.left - 12}
+                y={y(value) + 4}
+                className="telemetry-axis-text"
+                textAnchor="end"
+              >
+                {formatLapTime(value)}
               </text>
             </g>
-          );
-        })}
+          ))}
 
-        {points.map((point, index) => {
-          const meta = driverMap.get(Number(point.driverNumber));
-          const driver = meta?.driver;
-          const color = driverColor(driver, meta?.index || 0);
+          {Array.from({ length: 7 }, (_, index) => {
+            const lap = Math.round(minLap + ((maxLap - minLap) * index) / 6);
+            return (
+              <g key={`${lap}-${index}`}>
+                <line
+                  x1={x(lap)}
+                  x2={x(lap)}
+                  y1={pad.top}
+                  y2={height - pad.bottom}
+                  className="telemetry-grid-line vertical"
+                />
+                <text
+                  x={x(lap)}
+                  y={height - 15}
+                  className="telemetry-axis-text"
+                  textAnchor="middle"
+                >
+                  V{lap}
+                </text>
+              </g>
+            );
+          })}
 
-          return (
-            <circle
-              key={`${point.driverNumber}-${point.lapNumber}-${index}`}
-              cx={x(point.lapNumber)}
-              cy={y(point.lapTime)}
-              r="5.2"
-              fill={color}
-              fillOpacity="0.82"
-              stroke="#050608"
-              strokeWidth="1.8"
-            >
-              <title>
-                {`${driver?.name_acronym || point.driverNumber} · Vuelta ${point.lapNumber} · ${formatLapTime(point.lapTime)} · ${point.compound}${point.tyreAge !== null ? ` · neumático ${point.tyreAge}v` : ""}`}
-              </title>
-            </circle>
-          );
-        })}
-      </svg>
+          {points.map((point, index) => {
+            const meta = driverMap.get(Number(point.driverNumber));
+            const driver = meta?.driver;
+            const color = meta?.color || FALLBACK_COLORS[index % FALLBACK_COLORS.length];
+            const marker = meta?.marker || "circle";
+            const key = `${point.driverNumber}-${point.lapNumber}`;
+            const active = hoverKey === key;
+            const cx = x(point.lapNumber);
+            const cy = y(point.lapTime);
+            const size = active ? 7.2 : 5.6;
+
+            const hoverData = {
+              ...point,
+              driver,
+              color,
+              marker,
+              chartX: cx,
+              chartY: cy,
+            };
+
+            const common = {
+              fill: color,
+              fillOpacity: active ? 1 : 0.88,
+              stroke: active ? "#ffffff" : "#050608",
+              strokeWidth: active ? 2.4 : 1.8,
+              className: "pace-chart-point-shape",
+              pointerEvents: "none",
+            };
+
+            return (
+              <g
+                key={`${key}-${index}`}
+                className="pace-chart-point"
+                onPointerEnter={() => setHoverPoint(hoverData)}
+                onPointerMove={() => setHoverPoint(hoverData)}
+                onPointerLeave={() => setHoverPoint(null)}
+              >
+                <circle
+                  cx={cx}
+                  cy={cy}
+                  r="11"
+                  fill="transparent"
+                  className="pace-chart-hit-area"
+                />
+
+                {marker === "diamond" ? (
+                  <rect
+                    x={cx - size}
+                    y={cy - size}
+                    width={size * 2}
+                    height={size * 2}
+                    rx="1.5"
+                    transform={`rotate(45 ${cx} ${cy})`}
+                    {...common}
+                  />
+                ) : marker === "square" ? (
+                  <rect
+                    x={cx - size}
+                    y={cy - size}
+                    width={size * 2}
+                    height={size * 2}
+                    rx="2"
+                    {...common}
+                  />
+                ) : marker === "triangle" ? (
+                  <polygon
+                    points={`${cx},${cy - size * 1.25} ${cx - size * 1.15},${cy + size} ${cx + size * 1.15},${cy + size}`}
+                    {...common}
+                  />
+                ) : (
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={size}
+                    {...common}
+                  />
+                )}
+              </g>
+            );
+          })}
+        </svg>
+
+        {hoverPoint && (
+          <div
+            className={`pace-point-tooltip ${
+              hoverPoint.chartX > width / 2 ? "dock-left" : "dock-right"
+            }`}
+            style={{ "--pace-point-color": hoverPoint.color }}
+          >
+            <div className="pace-point-tooltip-head">
+              <span className="pace-point-driver">
+                <i className={`pace-tooltip-marker ${hoverPoint.marker || "circle"}`} />
+                <strong>{hoverPoint.driver?.name_acronym || hoverPoint.driverNumber}</strong>
+              </span>
+              <small>{hoverPoint.driver?.team_name || ""}</small>
+            </div>
+
+            <div className="pace-point-time">{formatLapTime(hoverPoint.lapTime)}</div>
+
+            <div className="pace-point-details">
+              <div>
+                <span>Vuelta</span>
+                <strong>{hoverPoint.lapNumber}</strong>
+              </div>
+              <div>
+                <span>Stint</span>
+                <strong>{hoverPoint.stintNumber ?? "—"}</strong>
+              </div>
+              <div>
+                <span>Compuesto</span>
+                <strong
+                  className="pace-compound-pill"
+                  style={{ "--compound-color": compoundColor(hoverPoint.compound) }}
+                >
+                  {normalizeCompound(hoverPoint.compound)}
+                </strong>
+              </div>
+              <div>
+                <span>Edad neumático</span>
+                <strong>
+                  {hoverPoint.tyreAge !== null && hoverPoint.tyreAge !== undefined
+                    ? `${hoverPoint.tyreAge} v`
+                    : "—"}
+                </strong>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function PaceAnalysis({ analysis }) {
+function PaceAnalysis({ analysis, drivers = [] }) {
   if (!analysis) return null;
 
   const { reference, bestLap, consistent, stats, narrative } = analysis;
@@ -1094,7 +1833,7 @@ function PaceAnalysis({ analysis }) {
     <section className="pace-analysis">
       <div className="pace-analysis-heading">
         <div>
-          <span>Lectura de carrera</span>
+          <span>Lectura de ritmo</span>
           <h3>¿Qué está mostrando el ritmo?</h3>
         </div>
         <small>Comparación basada en las vueltas filtradas que aparecen en el gráfico.</small>
@@ -1150,7 +1889,7 @@ function PaceAnalysis({ analysis }) {
                   <td>
                     <span
                       className="pace-table-dot"
-                      style={{ background: driverColor(item.driver, item.index) }}
+                      style={{ background: paceDriverColor(item.driver, drivers, item.index) }}
                     />
                     <strong>{item.driver.name_acronym}</strong>
                   </td>
@@ -1190,6 +1929,15 @@ export default function Telemetry() {
   const [driverB, setDriverB] = useState("");
   const [paceDrivers, setPaceDrivers] = useState([]);
   const [filterSlow, setFilterSlow] = useState(true);
+  const [paceStints, setPaceStints] = useState([]);
+  const [paceStintSelection, setPaceStintSelection] = useState({});
+  const [loadingStints, setLoadingStints] = useState(false);
+
+  const [lapLaps, setLapLaps] = useState([]);
+  const [lapStints, setLapStints] = useState([]);
+  const [lapASelection, setLapASelection] = useState("");
+  const [lapBSelection, setLapBSelection] = useState("");
+  const [loadingLapChoices, setLoadingLapChoices] = useState(false);
 
   const [comparison, setComparison] = useState(null);
   const [pacePoints, setPacePoints] = useState([]);
@@ -1226,11 +1974,11 @@ export default function Telemetry() {
         const ordered = [...data].sort((a, b) => new Date(a.date_start) - new Date(b.date_start));
         setMeetings(ordered);
 
-        const now = Date.now();
-        const completed = ordered.filter((meeting) => new Date(meeting.date_end).getTime() < now);
-        const defaultMeeting = completed[completed.length - 1] || ordered[0];
-
-        if (defaultMeeting) setMeetingKey(String(defaultMeeting.meeting_key));
+        // La página comienza sin GP seleccionado.
+        // Así el usuario decide qué fin de semana quiere analizar.
+        setMeetingKey("");
+        setSessions([]);
+        setSessionKey("");
       } catch (err) {
         setError(`No se pudieron cargar los Grandes Premios: ${err.message}`);
       } finally {
@@ -1242,7 +1990,13 @@ export default function Telemetry() {
   }, []);
 
   useEffect(() => {
-    if (!meetingKey || liveMode) return;
+    if (!meetingKey || liveMode) {
+      if (!liveMode) {
+        setSessions([]);
+        setSessionKey("");
+      }
+      return;
+    }
 
     async function loadSessions() {
       try {
@@ -1255,12 +2009,8 @@ export default function Telemetry() {
         const ordered = [...data].sort(sessionSort);
         setSessions(ordered);
 
-        const preferred =
-          ordered.find((session) => session.session_name === (mode === "pace" ? "Race" : "Qualifying")) ||
-          ordered.find((session) => session.session_name === "Race") ||
-          ordered[ordered.length - 1];
-
-        setSessionKey(preferred ? String(preferred.session_key) : "");
+        // Igual que con el GP, no elegimos una sesión automáticamente.
+        setSessionKey("");
       } catch (err) {
         setError(`No se pudieron cargar las sesiones: ${err.message}`);
       } finally {
@@ -1269,7 +2019,7 @@ export default function Telemetry() {
     }
 
     loadSessions();
-  }, [meetingKey, liveMode, mode]);
+  }, [meetingKey, liveMode]);
 
   useEffect(() => {
     if (!sessionKey) {
@@ -1289,7 +2039,7 @@ export default function Telemetry() {
         );
 
         const unique = [...new Map(data.map((driver) => [driver.driver_number, driver])).values()]
-          .sort((a, b) => Number(a.driver_number) - Number(b.driver_number));
+          .sort(compareDriversByTeam);
 
         setDrivers(unique);
 
@@ -1329,10 +2079,96 @@ export default function Telemetry() {
     loadDrivers();
   }, [sessionKey, liveMode]);
 
+  useEffect(() => {
+    setComparison(null);
+    setLapASelection("");
+    setLapBSelection("");
+
+    if (!sessionKey || mode !== "lap") {
+      setLapLaps([]);
+      setLapStints([]);
+      setLoadingLapChoices(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    async function loadLapChoices() {
+      try {
+        setLoadingLapChoices(true);
+        setError("");
+
+        const { laps, stints } = await fetchPaceData(sessionKey, liveMode);
+
+        if (!cancelled) {
+          setLapLaps(laps);
+          setLapStints(stints);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setLapLaps([]);
+          setLapStints([]);
+          setError(`No se pudieron cargar las vueltas de la sesión: ${err.message}`);
+        }
+      } finally {
+        if (!cancelled) setLoadingLapChoices(false);
+      }
+    }
+
+    loadLapChoices();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionKey, liveMode, mode]);
+
+  useEffect(() => {
+    setPacePoints([]);
+    setPaceStintSelection({});
+
+    if (!sessionKey || mode !== "pace") {
+      setPaceStints([]);
+      setLoadingStints(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    async function loadPaceStints() {
+      try {
+        setLoadingStints(true);
+
+        const cached = !liveMode ? PACE_DATA_CACHE.get(String(sessionKey)) : null;
+        const data = cached?.stints || await openF1(
+          "stints",
+          { session_key: sessionKey },
+          { live: liveMode }
+        ).catch(() => []);
+
+        if (!cancelled) {
+          setPaceStints(Array.isArray(data) ? data : []);
+        }
+      } finally {
+        if (!cancelled) setLoadingStints(false);
+      }
+    }
+
+    loadPaceStints();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionKey, liveMode, mode]);
+
   async function runLapComparison({ silent = false } = {}) {
     if (!sessionKey || !driverA || !driverB) return;
+
     if (String(driverA) === String(driverB)) {
       setError("Selecciona dos pilotos distintos para comparar.");
+      return;
+    }
+
+    if (!lapASelection || !lapBSelection) {
+      setError("Selecciona una vuelta válida para cada piloto.");
       return;
     }
 
@@ -1340,34 +2176,50 @@ export default function Telemetry() {
       if (!silent) setLoadingAnalysis(true);
       setError("");
 
-      const laps = await openF1(
-        "laps",
-        { session_key: sessionKey },
-        { live: liveMode }
+      let laps = lapLaps;
+      let stints = lapStints;
+
+      // En LIVE actualizamos la lista justo antes de comparar.
+      if (liveMode || !laps.length) {
+        const latest = await fetchPaceData(sessionKey, liveMode);
+        laps = latest.laps;
+        stints = latest.stints;
+        setLapLaps(laps);
+        setLapStints(stints);
+      }
+
+      const lapA = timedLapsForDriver(laps, driverA).find(
+        (lap) => String(lap.lap_number) === String(lapASelection)
+      );
+      const lapB = timedLapsForDriver(laps, driverB).find(
+        (lap) => String(lap.lap_number) === String(lapBSelection)
       );
 
-      const lapA = fastestLapForDriver(laps, driverA);
-      const lapB = fastestLapForDriver(laps, driverB);
-
       if (!lapA || !lapB) {
-        throw new Error("Aún no hay una vuelta rápida válida para ambos pilotos en esta sesión.");
+        throw new Error(
+          "Una de las vueltas seleccionadas ya no está disponible. Vuelve a elegirla en el filtro."
+        );
       }
 
       const [carA, carB] = await Promise.all([
-        fetchCarDataForLap(sessionKey, driverA, lapA, liveMode),
-        fetchCarDataForLap(sessionKey, driverB, lapB, liveMode),
+        fetchCarDataForLap(sessionKey, driverA, lapA, liveMode, laps),
+        fetchCarDataForLap(sessionKey, driverB, lapB, liveMode, laps),
       ]);
 
       const pointsA = prepareTelemetry(carA, lapA);
       const pointsB = prepareTelemetry(carB, lapB);
 
       if (pointsA.length < 10 || pointsB.length < 10) {
-        throw new Error("OpenF1 no devolvió suficiente telemetría para una de las vueltas.");
+        throw new Error(
+          "OpenF1 no devolvió suficiente telemetría para una de las vueltas. Prueba otra vuelta del selector."
+        );
       }
 
       setComparison({
         lapA,
         lapB,
+        lapAInfo: lapOptionData(lapA, stints, driverA),
+        lapBInfo: lapOptionData(lapB, stints, driverB),
         pointsA,
         pointsB,
         delta: buildDeltaSeries(pointsA, pointsB),
@@ -1388,12 +2240,23 @@ export default function Telemetry() {
       if (!silent) setLoadingAnalysis(true);
       setError("");
 
-      const [laps, stints] = await Promise.all([
-        openF1("laps", { session_key: sessionKey }, { live: liveMode }),
-        openF1("stints", { session_key: sessionKey }, { live: liveMode }).catch(() => []),
-      ]);
+      const { laps, stints } = await fetchPaceData(sessionKey, liveMode);
+      setPaceStints(stints);
 
-      const points = buildRacePace(laps, stints, paceDrivers, filterSlow);
+      const points = buildRacePace(
+        laps,
+        stints,
+        paceDrivers,
+        filterSlow,
+        paceStintSelection
+      );
+
+      if (!points.length) {
+        throw new Error(
+          "No hay vueltas válidas para la combinación de pilotos y stints seleccionada."
+        );
+      }
+
       setPacePoints(points);
       setLastUpdated(new Date());
     } catch (err) {
@@ -1434,6 +2297,12 @@ export default function Telemetry() {
       if (meeting) setMeetingKey(String(meeting.meeting_key));
       setComparison(null);
       setPacePoints([]);
+      setPaceStints([]);
+      setPaceStintSelection({});
+      setLapLaps([]);
+      setLapStints([]);
+      setLapASelection("");
+      setLapBSelection("");
     } catch (err) {
       setLiveMode(false);
       setAutoRefresh(false);
@@ -1450,6 +2319,12 @@ export default function Telemetry() {
     setAutoRefresh(false);
     setComparison(null);
     setPacePoints([]);
+    setPaceStints([]);
+    setPaceStintSelection({});
+    setLapLaps([]);
+    setLapStints([]);
+    setLapASelection("");
+    setLapBSelection("");
 
     if (meetingKey) {
       setMeetingKey((current) => String(current));
@@ -1458,15 +2333,36 @@ export default function Telemetry() {
 
   function togglePaceDriver(driverNumber) {
     const numeric = Number(driverNumber);
+    const selected = paceDrivers.includes(numeric);
 
-    setPaceDrivers((current) => {
-      if (current.includes(numeric)) {
-        return current.filter((item) => item !== numeric);
-      }
+    if (!selected && paceDrivers.length >= MAX_PACE_DRIVERS) return;
 
-      if (current.length >= MAX_PACE_DRIVERS) return current;
-      return [...current, numeric];
-    });
+    setPacePoints([]);
+
+    if (selected) {
+      setPaceDrivers((current) => current.filter((item) => item !== numeric));
+      setPaceStintSelection((selection) => {
+        const next = { ...selection };
+        delete next[numeric];
+        return next;
+      });
+      return;
+    }
+
+    setPaceDrivers((current) => [...current, numeric]);
+    setPaceStintSelection((selection) => ({
+      ...selection,
+      [numeric]: selection[numeric] ?? "all",
+    }));
+  }
+
+  function updatePaceStint(driverNumber, value) {
+    const numeric = Number(driverNumber);
+    setPaceStintSelection((current) => ({
+      ...current,
+      [numeric]: value,
+    }));
+    setPacePoints([]);
   }
 
   analysisRef.current = () => {
@@ -1482,11 +2378,102 @@ export default function Telemetry() {
     }, LIVE_REFRESH_MS);
 
     return () => window.clearInterval(interval);
-  }, [liveMode, autoRefresh, mode, sessionKey, driverA, driverB, filterSlow, paceDrivers.join(",")]);
+  }, [
+    liveMode,
+    autoRefresh,
+    mode,
+    sessionKey,
+    driverA,
+    driverB,
+    lapASelection,
+    lapBSelection,
+    filterSlow,
+    paceDrivers.join(","),
+    paceStintSelection,
+  ]);
 
   const driverAInfo = driverMap.get(Number(driverA));
   const driverBInfo = driverMap.get(Number(driverB));
-  const paceDriverInfo = paceDrivers.map((number) => driverMap.get(Number(number))).filter(Boolean);
+
+  const driverAChartStyle = comparisonChartStyle(
+    driverAInfo,
+    driverBInfo,
+    "A",
+    0
+  );
+
+  const driverBChartStyle = comparisonChartStyle(
+    driverBInfo,
+    driverAInfo,
+    "B",
+    1
+  );
+
+  const lapChoicesA = useMemo(
+    () =>
+      timedLapsForDriver(lapLaps, driverA).map((lap) =>
+        lapOptionData(lap, lapStints, driverA)
+      ),
+    [lapLaps, lapStints, driverA]
+  );
+
+  const lapChoicesB = useMemo(
+    () =>
+      timedLapsForDriver(lapLaps, driverB).map((lap) =>
+        lapOptionData(lap, lapStints, driverB)
+      ),
+    [lapLaps, lapStints, driverB]
+  );
+
+  const paceDriverInfo = drivers.filter((driver) =>
+    paceDrivers.includes(Number(driver.driver_number))
+  );
+
+  useEffect(() => {
+    if (!driverA || !lapChoicesA.length) {
+      setLapASelection("");
+      return;
+    }
+
+    setLapASelection((current) => {
+      if (
+        lapChoicesA.some(
+          (item) => String(item.lap.lap_number) === String(current)
+        )
+      ) {
+        return current;
+      }
+
+      const fastest = [...lapChoicesA].sort(
+        (a, b) => Number(a.lap.lap_duration) - Number(b.lap.lap_duration)
+      )[0];
+
+      return fastest ? String(fastest.lap.lap_number) : "";
+    });
+  }, [driverA, lapChoicesA]);
+
+  useEffect(() => {
+    if (!driverB || !lapChoicesB.length) {
+      setLapBSelection("");
+      return;
+    }
+
+    setLapBSelection((current) => {
+      if (
+        lapChoicesB.some(
+          (item) => String(item.lap.lap_number) === String(current)
+        )
+      ) {
+        return current;
+      }
+
+      const fastest = [...lapChoicesB].sort(
+        (a, b) => Number(a.lap.lap_duration) - Number(b.lap.lap_duration)
+      )[0];
+
+      return fastest ? String(fastest.lap.lap_number) : "";
+    });
+  }, [driverB, lapChoicesB]);
 
   const paceAnalysis = useMemo(
     () => buildPaceAnalysis(pacePoints, paceDriverInfo),
@@ -1551,39 +2538,54 @@ export default function Telemetry() {
         </div>
 
         <div className="telemetry-control-panel">
-          <SelectField
+          <TelemetrySelect
             label="Gran Premio"
             value={meetingKey}
+            placeholder="Selecciona un Gran Premio"
             disabled={liveMode || loadingContext}
-            onChange={(event) => {
-              setMeetingKey(event.target.value);
+            options={meetings.map((meeting) => ({
+              value: meeting.meeting_key,
+              label: meetingLabel(meeting),
+            }))}
+            onChange={(nextMeetingKey) => {
+              setMeetingKey(nextMeetingKey);
+              setSessionKey("");
+              setSessions([]);
+              setDrivers([]);
+              setDriverA("");
+              setDriverB("");
+              setPaceDrivers([]);
               setComparison(null);
               setPacePoints([]);
+              setPaceStints([]);
+              setPaceStintSelection({});
+              setLapLaps([]);
+              setLapStints([]);
+              setLapASelection("");
+              setLapBSelection("");
             }}
-          >
-            {meetings.map((meeting) => (
-              <option key={meeting.meeting_key} value={meeting.meeting_key}>
-                {meetingLabel(meeting)}
-              </option>
-            ))}
-          </SelectField>
+          />
 
-          <SelectField
+          <TelemetrySelect
             label="Sesión"
             value={sessionKey}
-            disabled={liveMode || loadingContext || !sessions.length}
-            onChange={(event) => {
-              setSessionKey(event.target.value);
+            placeholder="Selecciona una sesión"
+            disabled={liveMode || loadingContext || !meetingKey || !sessions.length}
+            options={sessions.map((session) => ({
+              value: session.session_key,
+              label: `${session.session_name} · ${formatSessionDate(session.date_start)}`,
+            }))}
+            onChange={(nextSessionKey) => {
+              setSessionKey(nextSessionKey);
               setComparison(null);
               setPacePoints([]);
+              setPaceStintSelection({});
+              setLapLaps([]);
+              setLapStints([]);
+              setLapASelection("");
+              setLapBSelection("");
             }}
-          >
-            {sessions.map((session) => (
-              <option key={session.session_key} value={session.session_key}>
-                {session.session_name} · {formatSessionDate(session.date_start)}
-              </option>
-            ))}
-          </SelectField>
+          />
 
           <div className="telemetry-context-summary">
             <span>{selectedMeeting?.country_name || "Temporada 2026"}</span>
@@ -1596,39 +2598,162 @@ export default function Telemetry() {
 
         {mode === "lap" ? (
           <section className="telemetry-lap-mode">
-            <div className="telemetry-driver-picker two">
-              <SelectField
+            <div className="telemetry-driver-picker two telemetry-driver-picker-rich">
+              <TelemetrySelect
                 label="Piloto A"
                 value={driverA}
+                placeholder="Selecciona piloto A"
                 disabled={!drivers.length}
-                onChange={(event) => setDriverA(event.target.value)}
-              >
-                {drivers.map((driver) => (
-                  <option key={driver.driver_number} value={driver.driver_number}>
-                    {driverLabel(driver)}
-                  </option>
-                ))}
-              </SelectField>
+                className="telemetry-driver-select"
+                options={drivers.map((driver, index) => ({
+                  value: driver.driver_number,
+                  label: driver.full_name || driver.broadcast_name || driverLabel(driver),
+                  meta: driver.team_name || "Sin equipo",
+                  badge: driver.name_acronym || driver.driver_number,
+                  color: driverColor(driver, index),
+                }))}
+                onChange={(value) => {
+                  setDriverA(value);
+                  setLapASelection("");
+                  setComparison(null);
+                }}
+              />
 
               <div className="telemetry-vs">VS</div>
 
-              <SelectField
+              <TelemetrySelect
                 label="Piloto B"
                 value={driverB}
+                placeholder="Selecciona piloto B"
                 disabled={!drivers.length}
-                onChange={(event) => setDriverB(event.target.value)}
-              >
-                {drivers.map((driver) => (
-                  <option key={driver.driver_number} value={driver.driver_number}>
-                    {driverLabel(driver)}
-                  </option>
-                ))}
-              </SelectField>
+                className="telemetry-driver-select"
+                options={drivers.map((driver, index) => ({
+                  value: driver.driver_number,
+                  label: driver.full_name || driver.broadcast_name || driverLabel(driver),
+                  meta: driver.team_name || "Sin equipo",
+                  badge: driver.name_acronym || driver.driver_number,
+                  color: driverColor(driver, index),
+                }))}
+                onChange={(value) => {
+                  setDriverB(value);
+                  setLapBSelection("");
+                  setComparison(null);
+                }}
+              />
 
-              <button className="telemetry-primary-button" onClick={() => runLapComparison()} disabled={loadingAnalysis || !driverA || !driverB}>
+              <button
+                className="telemetry-primary-button"
+                onClick={() => runLapComparison()}
+                disabled={
+                  loadingAnalysis ||
+                  loadingLapChoices ||
+                  !driverA ||
+                  !driverB ||
+                  !lapASelection ||
+                  !lapBSelection
+                }
+              >
                 {loadingAnalysis ? "Analizando…" : "Comparar vueltas"}
               </button>
             </div>
+
+            {drivers.length > 0 && sessionKey && (
+              <section className="lap-filter-panel">
+                <div className="lap-filter-head">
+                  <div>
+                    <span>Filtro por vuelta</span>
+                    <h3>Elige la vuelta exacta de cada piloto</h3>
+                  </div>
+
+                  <small>
+                    {loadingLapChoices
+                      ? "Cargando vueltas y compuestos…"
+                      : "Por defecto se selecciona la vuelta cronometrada más rápida con fecha válida."}
+                  </small>
+                </div>
+
+                <div className="lap-filter-grid">
+                  {[{
+                    key: "A",
+                    driver: driverAInfo,
+                    choices: lapChoicesA,
+                    value: lapASelection,
+                    onChange: (value) => {
+                      setLapASelection(value);
+                      setComparison(null);
+                    },
+                  }, {
+                    key: "B",
+                    driver: driverBInfo,
+                    choices: lapChoicesB,
+                    value: lapBSelection,
+                    onChange: (value) => {
+                      setLapBSelection(value);
+                      setComparison(null);
+                    },
+                  }].map((item, index) => {
+                    const color = driverColor(item.driver, index);
+                    const selectedLap = item.choices.find(
+                      (choice) => String(choice.lap.lap_number) === String(item.value)
+                    );
+
+                    return (
+                      <div
+                        key={item.key}
+                        className="lap-filter-card"
+                        style={{ "--driver-color": color }}
+                      >
+                        <div className="lap-filter-driver">
+                          <i />
+                          <div>
+                            <span>Piloto {item.key}</span>
+                            <strong>{item.driver?.name_acronym || "—"}</strong>
+                            <small>{item.driver?.team_name || "Selecciona un piloto"}</small>
+                          </div>
+                        </div>
+
+                        <TelemetrySelect
+                          label="Vuelta"
+                          value={item.value}
+                          placeholder={
+                            loadingLapChoices
+                              ? "Cargando vueltas…"
+                              : "Selecciona una vuelta"
+                          }
+                          disabled={loadingLapChoices || !item.driver || !item.choices.length}
+                          className="telemetry-lap-select"
+                          options={item.choices.map((choice) => ({
+                            value: choice.lap.lap_number,
+                            label: lapOptionLabel(choice),
+                            meta: lapOptionMeta(choice),
+                            badge: `V${choice.lap.lap_number}`,
+                            color: compoundColor(choice.compound),
+                          }))}
+                          onChange={item.onChange}
+                        />
+
+                        {selectedLap ? (
+                          <div className="lap-filter-summary">
+                            <span
+                              className="lap-compound-pill"
+                              style={{ "--compound-color": compoundColor(selectedLap.compound) }}
+                            >
+                              {selectedLap.compound}
+                            </span>
+                            <strong>{formatLapTime(selectedLap.lap.lap_duration)}</strong>
+                            <small>
+                              Vuelta {selectedLap.lap.lap_number}
+                              {selectedLap.stintNumber ? ` · Stint ${selectedLap.stintNumber}` : ""}
+                              {selectedLap.tyreAge !== null ? ` · ${selectedLap.tyreAge} vueltas de neumático` : ""}
+                            </small>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
 
             {comparison && (
               <>
@@ -1636,7 +2761,7 @@ export default function Telemetry() {
                   <MetricCard
                     label={driverAInfo?.name_acronym || "Piloto A"}
                     value={formatLapTime(comparison.lapA.lap_duration)}
-                    sub={`Vuelta ${comparison.lapA.lap_number} · ${driverAInfo?.team_name || ""}`}
+                    sub={`Vuelta ${comparison.lapA.lap_number} · ${comparison.lapAInfo?.compound || "—"} · ${driverAInfo?.team_name || ""}`}
                     accent={driverColor(driverAInfo, 0)}
                   />
                   <MetricCard
@@ -1654,7 +2779,7 @@ export default function Telemetry() {
                   <MetricCard
                     label={driverBInfo?.name_acronym || "Piloto B"}
                     value={formatLapTime(comparison.lapB.lap_duration)}
-                    sub={`Vuelta ${comparison.lapB.lap_number} · ${driverBInfo?.team_name || ""}`}
+                    sub={`Vuelta ${comparison.lapB.lap_number} · ${comparison.lapBInfo?.compound || "—"} · ${driverBInfo?.team_name || ""}`}
                     accent={driverColor(driverBInfo, 1)}
                   />
                 </div>
@@ -1692,12 +2817,14 @@ export default function Telemetry() {
                   series={[
                     {
                       label: driverAInfo?.name_acronym || "A",
-                      color: driverColor(driverAInfo, 0),
+                      color: driverAChartStyle.color,
+                      dash: driverAChartStyle.dash,
                       points: comparison.pointsA,
                     },
                     {
                       label: driverBInfo?.name_acronym || "B",
-                      color: driverColor(driverBInfo, 1),
+                      color: driverBChartStyle.color,
+                      dash: driverBChartStyle.dash,
                       points: comparison.pointsB,
                     },
                   ]}
@@ -1716,12 +2843,14 @@ export default function Telemetry() {
                   series={[
                     {
                       label: driverAInfo?.name_acronym || "A",
-                      color: driverColor(driverAInfo, 0),
+                      color: driverAChartStyle.color,
+                      dash: driverAChartStyle.dash,
                       points: comparison.pointsA,
                     },
                     {
                       label: driverBInfo?.name_acronym || "B",
-                      color: driverColor(driverBInfo, 1),
+                      color: driverBChartStyle.color,
+                      dash: driverBChartStyle.dash,
                       points: comparison.pointsB,
                     },
                   ]}
@@ -1740,12 +2869,14 @@ export default function Telemetry() {
                   series={[
                     {
                       label: driverAInfo?.name_acronym || "A",
-                      color: driverColor(driverAInfo, 0),
+                      color: driverAChartStyle.color,
+                      dash: driverAChartStyle.dash,
                       points: comparison.pointsA,
                     },
                     {
                       label: driverBInfo?.name_acronym || "B",
-                      color: driverColor(driverBInfo, 1),
+                      color: driverBChartStyle.color,
+                      dash: driverBChartStyle.dash,
                       points: comparison.pointsB,
                     },
                   ]}
@@ -1767,7 +2898,10 @@ export default function Telemetry() {
                   <input
                     type="checkbox"
                     checked={filterSlow}
-                    onChange={(event) => setFilterSlow(event.target.checked)}
+                    onChange={(event) => {
+                      setFilterSlow(event.target.checked);
+                      setPacePoints([]);
+                    }}
                   />
                   <span />
                   Filtrar vueltas lentas
@@ -1787,12 +2921,13 @@ export default function Telemetry() {
               {drivers.map((driver, index) => {
                 const selected = paceDrivers.includes(Number(driver.driver_number));
                 const disabled = !selected && paceDrivers.length >= MAX_PACE_DRIVERS;
+                const color = driverColor(driver, index);
 
                 return (
                   <button
                     key={driver.driver_number}
                     className={`pace-driver-chip ${selected ? "selected" : ""}`}
-                    style={{ "--driver-color": driverColor(driver, index) }}
+                    style={{ "--driver-color": color }}
                     disabled={disabled}
                     onClick={() => togglePaceDriver(driver.driver_number)}
                   >
@@ -1809,6 +2944,94 @@ export default function Telemetry() {
             <div className="pace-selection-count">
               {paceDrivers.length} / {MAX_PACE_DRIVERS} pilotos seleccionados
             </div>
+
+            {paceDriverInfo.length > 0 && (
+              <section className="pace-stint-panel">
+                <div className="pace-stint-head">
+                  <div>
+                    <span>Filtro por stint</span>
+                    <h3>Elige qué tramo comparar de cada piloto</h3>
+                  </div>
+                  <small>
+                    {loadingStints
+                      ? "Cargando compuestos y stints…"
+                      : paceStints.length
+                      ? "Puedes comparar stints distintos entre pilotos."
+                      : "Esta sesión no devuelve información de stints; se usarán todas las vueltas."}
+                  </small>
+                </div>
+
+                <div className="pace-stint-grid">
+                  {paceDriverInfo.map((driver, index) => {
+                    const number = Number(driver.driver_number);
+                    const stints = driverStints(paceStints, number);
+                    const selectedStint = String(paceStintSelection[number] ?? "all");
+                    const color = driverColor(driver, index);
+
+                    return (
+                      <div
+                        key={driver.driver_number}
+                        className="pace-stint-card"
+                        style={{ "--driver-color": color }}
+                      >
+                        <div className="pace-stint-driver">
+                          <i />
+                          <div>
+                            <strong>{driver.name_acronym}</strong>
+                            <small>{driver.team_name}</small>
+                          </div>
+                        </div>
+
+                        <TelemetrySelect
+                          label=""
+                          value={selectedStint}
+                          placeholder="Selecciona un stint"
+                          disabled={!stints.length}
+                          className="pace-stint-select"
+                          options={[
+                            {
+                              value: "all",
+                              label: "Todos los stints",
+                              meta: stints.length
+                                ? `${stints.length} stints disponibles`
+                                : "Sin información de stints",
+                            },
+                            ...stints.map((stint) => ({
+                              value: String(stint.stint_number),
+                              label: stintLabel(stint),
+                              meta:
+                                stint.tyre_age_at_start !== null &&
+                                stint.tyre_age_at_start !== undefined
+                                  ? `Neumático inicia con ${stint.tyre_age_at_start} vueltas`
+                                  : "",
+                              badge: `S${stint.stint_number}`,
+                              color: compoundColor(stint.compound),
+                            })),
+                          ]}
+                          onChange={(value) =>
+                            updatePaceStint(driver.driver_number, value)
+                          }
+                        />
+
+                        {selectedStint !== "all" && stints.length > 0 && (() => {
+                          const active = stints.find(
+                            (stint) => String(stint.stint_number) === selectedStint
+                          );
+                          return active ? (
+                            <span
+                              className="pace-stint-compound"
+                              style={{ "--compound-color": compoundColor(active.compound) }}
+                            >
+                              {normalizeCompound(active.compound)}
+                            </span>
+                          ) : null;
+                        })()}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
 
             {pacePoints.length > 0 && (
               <>
@@ -1827,14 +3050,18 @@ export default function Telemetry() {
                         key={driver.driver_number}
                         label={driver.name_acronym}
                         value={formatLapTime(med)}
-                        sub={`Mediana · mejor ${formatLapTime(best)}`}
-                        accent={driverColor(driver, index)}
+                        sub={`Mediana · mejor ${formatLapTime(best)} · ${
+                          String(paceStintSelection[driver.driver_number] ?? "all") === "all"
+                            ? "todos los stints"
+                            : `stint ${paceStintSelection[driver.driver_number]}`
+                        }`}
+                        accent={paceDriverColor(driver, paceDriverInfo, index)}
                       />
                     );
                   })}
                 </div>
 
-                <PaceAnalysis analysis={paceAnalysis} />
+                <PaceAnalysis analysis={paceAnalysis} drivers={paceDriverInfo} />
               </>
             )}
           </section>
