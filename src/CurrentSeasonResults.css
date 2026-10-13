@@ -1154,125 +1154,52 @@
 }
 
 /* ============================================================
-   RESULTADOS INLINE V3
+   RESULTADOS INLINE · ACTUALIZACIÓN
 ============================================================ */
-
-
-/* La fila seleccionada se convierte
-   en contenedor del detalle */
-
 .current-race-result-wrapper.is-open {
   background:
     linear-gradient(
       180deg,
-      rgba(
-        0,
-        245,
-        212,
-        0.025
-      ),
+      rgba(0, 245, 212, 0.025),
       transparent 42%
     );
 }
 
-
-/* Separación visual entre la carrera
-   seleccionada y su clasificación */
-
 .current-race-result-wrapper.is-open
   .current-race-result-card {
-  border-bottom:
-    1px solid
-    rgba(
-      0,
-      245,
-      212,
-      0.085
-    );
+  border-bottom: 1px solid rgba(0, 245, 212, 0.085);
 }
-
-
-/* Ahora el resultado vive DENTRO
-   de la fila seleccionada */
 
 .current-race-result-wrapper
   .current-result-detail {
-  margin:
-    14px 14px 16px;
+  margin: 14px 14px 16px;
 }
-
-
-/* Cuando una carrera está abierta,
-   su borde inferior pertenece al
-   resultado, no al botón */
 
 .current-race-result-wrapper.is-open {
-  border-bottom:
-    1px solid
-    rgba(
-      255,
-      255,
-      255,
-      0.055
-    );
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
 }
 
-
-/* Un poco más de aire en la tabla
-   completa */
-
-.current-race-result-wrapper.is-open
-  .current-result-table {
-  contain:
-    layout
-    style;
+.current-results-list
+  .current-race-result-wrapper:last-child {
+  border-bottom: 0;
 }
 
-
-/* ============================================================
-   RENDIMIENTO
-============================================================ */
-
-/*
-  Aislamos el resultado completo.
-
-  Si abrimos Australia,
-  el navegador no necesita recalcular
-  estilos de toda la página.
-*/
+.current-results-toggle {
+  border-top: 0;
+}
 
 .current-result-detail {
-  contain:
-    layout
-    style
-    paint;
+  contain: layout style paint;
 }
-
-
-/*
-  Los elementos fuera del viewport
-  pueden evitar trabajo de pintura.
-*/
 
 .current-result-row {
-  content-visibility:
-    auto;
-
-  contain-intrinsic-size:
-    auto 49px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 49px;
 }
 
-
-/* ============================================================
-   MÓVIL
-============================================================ */
-
-@media (
-  max-width: 760px
-) {
+@media (max-width: 760px) {
   .current-race-result-wrapper
     .current-result-detail {
-    margin:
-      10px 8px 12px;
+    margin: 10px 8px 12px;
   }
 }

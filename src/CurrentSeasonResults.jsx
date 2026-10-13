@@ -1,6 +1,4 @@
 import {
-  memo,
-  useCallback,
   useMemo,
   useState,
 } from "react";
@@ -44,25 +42,17 @@ function getDriverCode(
   if (
     result?.Driver?.code
   ) {
-    return (
-      result.Driver.code
-    );
+    return result.Driver.code;
   }
 
-
   const surname =
-    result
-      ?.Driver
+    result?.Driver
       ?.familyName ||
     "";
 
-
   return (
     surname
-      .slice(
-        0,
-        3
-      )
+      .slice(0, 3)
       .toUpperCase() ||
     "---"
   );
@@ -73,8 +63,7 @@ function getSortedResults(
   race
 ) {
   return [
-    ...(race?.Results ||
-      []),
+    ...(race?.Results || []),
   ].sort(
     (a, b) =>
       Number(
@@ -91,416 +80,279 @@ function getSortedResults(
    PODIO COMPACTO
 ============================================================ */
 
-const RacePodium =
-  memo(
-    function RacePodium({
-      race,
-      getTeamColor,
-    }) {
-      const podium =
-        getSortedResults(
-          race
-        ).slice(
-          0,
-          3
-        );
+function RacePodium({
+  race,
+  getTeamColor,
+}) {
+  const podium =
+    getSortedResults(
+      race
+    ).slice(
+      0,
+      3
+    );
 
+  return (
+    <div className="current-race-podium">
+      {podium.map(
+        (
+          result,
+          index
+        ) => {
+          const constructorId =
+            result
+              .Constructor
+              ?.constructorId;
 
-      return (
-        <div className="current-race-podium">
-          {podium.map(
-            (
-              result,
-              index
-            ) => {
-              const constructorId =
-                result
-                  ?.Constructor
-                  ?.constructorId;
+          const color =
+            getTeamColor?.(
+              constructorId
+            ) ||
+            "#00f5d4";
 
+          return (
+            <div
+              className="current-podium-driver"
+              key={
+                result.Driver
+                  ?.driverId ||
+                index
+              }
+            >
+              <span className="current-podium-position">
+                {index + 1}
+              </span>
 
-              const color =
-                getTeamColor?.(
-                  constructorId
-                ) ||
-                "#00f5d4";
+              <span
+                className="current-podium-strip"
+                style={{
+                  background:
+                    color,
 
+                  boxShadow:
+                    `0 0 10px ${color}`,
+                }}
+              />
 
-              return (
-                <div
-                  className="current-podium-driver"
-                  key={
+              <div className="current-podium-info">
+                <strong>
+                  {getDriverCode(
                     result
-                      ?.Driver
-                      ?.driverId ||
-                    index
+                  )}
+                </strong>
+
+                <span className="current-podium-team">
+                  {
+                    result
+                      .Constructor
+                      ?.name
                   }
-                >
-                  <span className="current-podium-position">
-                    {index + 1}
-                  </span>
-
-
-                  <span
-                    className="current-podium-strip"
-                    style={{
-                      background:
-                        color,
-
-                      boxShadow:
-                        `0 0 10px ${color}`,
-                    }}
-                  />
-
-
-                  <div className="current-podium-info">
-                    <strong>
-                      {getDriverCode(
-                        result
-                      )}
-                    </strong>
-
-
-                    <span className="current-podium-team">
-                      {
-                        result
-                          ?.Constructor
-                          ?.name
-                      }
-                    </span>
-                  </div>
-                </div>
-              );
-            }
-          )}
-        </div>
-      );
-    }
+                </span>
+              </div>
+            </div>
+          );
+        }
+      )}
+    </div>
   );
+}
 
 
 /* ============================================================
    RESULTADO COMPLETO
 ============================================================ */
 
-const FullRaceResult =
-  memo(
-    function FullRaceResult({
-      race,
-      getTeamColor,
-      onClose,
-    }) {
-      const results =
-        getSortedResults(
-          race
-        );
+function FullRaceResult({
+  race,
+  getTeamColor,
+  onClose,
+  onOpenRaceHub,
+}) {
+  const results =
+    getSortedResults(
+      race
+    );
 
+  const country =
+    race.Circuit
+      ?.Location
+      ?.country;
 
-      const country =
-        race
-          ?.Circuit
-          ?.Location
-          ?.country;
+  return (
+    <div className="current-result-detail">
+      <div className="current-result-detail-head">
+        <div>
+          <div className="current-result-detail-eyebrow">
+            <CountryFlag
+              country={
+                country
+              }
+            />
 
+            <span>
+              Ronda{" "}
+              {race.round}
+            </span>
+          </div>
 
-      return (
-        <div className="current-result-detail">
-          <div className="current-result-detail-head">
-            <div>
-              <div className="current-result-detail-eyebrow">
-                <CountryFlag
-                  country={
-                    country
-                  }
-                />
+          <h4>
+            {race.raceName}
+          </h4>
 
-                <span>
-                  Ronda{" "}
-                  {race.round}
-                </span>
-              </div>
+          <p>
+            {
+              race.Circuit
+                ?.circuitName
+            }{" "}
+            ·{" "}
+            {formatCurrentRaceDate(
+              race.date
+            )}
+          </p>
+        </div>
 
-
-              <h4>
-                {
-                  race.raceName
-                }
-              </h4>
-
-
-              <p>
-                {
-                  race
-                    ?.Circuit
-                    ?.circuitName
-                }{" "}
-                ·{" "}
-                {formatCurrentRaceDate(
-                  race.date
-                )}
-              </p>
-            </div>
-
-
+        <div className="current-result-actions">
+          {onOpenRaceHub && (
             <button
               type="button"
-              className="current-result-close"
-              onClick={
-                onClose
-              }
+              className="current-result-hub"
+              onClick={() => onOpenRaceHub(race)}
             >
-              Cerrar
+              Race Hub ↗
             </button>
-          </div>
+          )}
 
-
-          <div className="current-result-table-head">
-            <span>
-              Pos.
-            </span>
-
-            <span>
-              Piloto
-            </span>
-
-            <span>
-              Escudería
-            </span>
-
-            <span>
-              Salida
-            </span>
-
-            <span>
-              Pts.
-            </span>
-          </div>
-
-
-          <div className="current-result-table">
-            {results.map(
-              (
-                result
-              ) => {
-                const constructorId =
-                  result
-                    ?.Constructor
-                    ?.constructorId;
-
-
-                const color =
-                  getTeamColor?.(
-                    constructorId
-                  ) ||
-                  "#00f5d4";
-
-
-                const fullName =
-                  `${
-                    result
-                      ?.Driver
-                      ?.givenName ||
-                    ""
-                  } ${
-                    result
-                      ?.Driver
-                      ?.familyName ||
-                    ""
-                  }`.trim();
-
-
-                return (
-                  <div
-                    className={`current-result-row ${
-                      Number(
-                        result.position
-                      ) <= 3
-                        ? "podium"
-                        : ""
-                    }`}
-                    key={
-                      result
-                        ?.Driver
-                        ?.driverId
-                    }
-                  >
-                    <div className="current-result-position">
-                      P
-                      {
-                        result.position
-                      }
-                    </div>
-
-
-                    <div className="current-result-driver">
-                      <span
-                        className="current-result-team-strip"
-                        style={{
-                          background:
-                            color,
-
-                          boxShadow:
-                            `0 0 9px ${color}`,
-                        }}
-                      />
-
-
-                      <div>
-                        <strong>
-                          {getDriverCode(
-                            result
-                          )}
-                        </strong>
-
-
-                        <small>
-                          {
-                            fullName
-                          }
-                        </small>
-                      </div>
-                    </div>
-
-
-                    <div className="current-result-constructor">
-                      {
-                        result
-                          ?.Constructor
-                          ?.name
-                      }
-                    </div>
-
-
-                    <div className="current-result-grid">
-                      G
-                      {
-                        result.grid
-                      }
-                    </div>
-
-
-                    <div className="current-result-points">
-                      {
-                        result.points
-                      }
-                    </div>
-                  </div>
-                );
-              }
-            )}
-          </div>
-        </div>
-      );
-    }
-  );
-
-
-/* ============================================================
-   FILA DE UNA CARRERA
-============================================================ */
-
-const RaceResultItem =
-  memo(
-    function RaceResultItem({
-      race,
-      isOpen,
-      getTeamColor,
-      onToggle,
-      onClose,
-    }) {
-      const country =
-        race
-          ?.Circuit
-          ?.Location
-          ?.country;
-
-
-      return (
-        <div
-          className={`current-race-result-wrapper ${
-            isOpen
-              ? "is-open"
-              : ""
-          }`}
-        >
           <button
             type="button"
-            className="current-race-result-card"
-            onClick={() =>
-              onToggle(
-                race
-              )
-            }
-            aria-expanded={
-              isOpen
-            }
+            className="current-result-close"
+            onClick={onClose}
           >
-            <div className="current-race-result-info">
-              <div className="current-race-result-meta">
-                <CountryFlag
-                  country={
-                    country
-                  }
-                />
-
-                <span>
-                  R
-                  {
-                    race.round
-                  }
-                </span>
-
-                <span>
-                  {formatCurrentRaceDate(
-                    race.date
-                  )}
-                </span>
-              </div>
-
-
-              <strong>
-                {
-                  race.raceName
-                }
-              </strong>
-            </div>
-
-
-            <RacePodium
-              race={
-                race
-              }
-              getTeamColor={
-                getTeamColor
-              }
-            />
-
-
-            <span className="current-race-result-arrow">
-              {isOpen
-                ? "−"
-                : "+"}
-            </span>
+            Cerrar
           </button>
-
-
-          {isOpen && (
-            <FullRaceResult
-              race={
-                race
-              }
-              getTeamColor={
-                getTeamColor
-              }
-              onClose={
-                onClose
-              }
-            />
-          )}
         </div>
-      );
-    }
+      </div>
+
+      <div className="current-result-table-head">
+        <span>
+          Pos.
+        </span>
+
+        <span>
+          Piloto
+        </span>
+
+        <span>
+          Escudería
+        </span>
+
+        <span>
+          Salida
+        </span>
+
+        <span>
+          Pts.
+        </span>
+      </div>
+
+      <div className="current-result-table">
+        {results.map(
+          (result) => {
+            const constructorId =
+              result
+                .Constructor
+                ?.constructorId;
+
+            const color =
+              getTeamColor?.(
+                constructorId
+              ) ||
+              "#00f5d4";
+
+            const fullName =
+              `${
+                result.Driver
+                  ?.givenName ||
+                ""
+              } ${
+                result.Driver
+                  ?.familyName ||
+                ""
+              }`.trim();
+
+            return (
+              <div
+                className={`current-result-row ${
+                  Number(
+                    result.position
+                  ) <= 3
+                    ? "podium"
+                    : ""
+                }`}
+                key={
+                  result.Driver
+                    ?.driverId
+                }
+              >
+                <div className="current-result-position">
+                  P
+                  {
+                    result.position
+                  }
+                </div>
+
+                <div className="current-result-driver">
+                  <span
+                    className="current-result-team-strip"
+                    style={{
+                      background:
+                        color,
+
+                      boxShadow:
+                        `0 0 9px ${color}`,
+                    }}
+                  />
+
+                  <div>
+                    <strong>
+                      {getDriverCode(
+                        result
+                      )}
+                    </strong>
+
+                    <small>
+                      {fullName}
+                    </small>
+                  </div>
+                </div>
+
+                <div className="current-result-constructor">
+                  {
+                    result
+                      .Constructor
+                      ?.name
+                  }
+                </div>
+
+                <div className="current-result-grid">
+                  G
+                  {
+                    result.grid
+                  }
+                </div>
+
+                <div className="current-result-points">
+                  {
+                    result.points
+                  }
+                </div>
+              </div>
+            );
+          }
+        )}
+      </div>
+    </div>
   );
+}
 
 
 /* ============================================================
@@ -511,13 +363,13 @@ export default function CurrentSeasonResults({
   races = [],
   loading = false,
   getTeamColor,
+  onOpenRaceHub,
 }) {
   const [
     showAll,
     setShowAll,
   ] =
     useState(false);
-
 
   const [
     selectedRound,
@@ -527,7 +379,10 @@ export default function CurrentSeasonResults({
 
 
   /*
-    Siempre mantenemos orden:
+    IMPORTANTE:
+
+    Ahora las carreras se ordenan
+    desde la primera hasta la última.
 
     R1
     R2
@@ -541,8 +396,7 @@ export default function CurrentSeasonResults({
         [...races]
           .filter(
             (race) =>
-              race
-                ?.Results
+              race.Results
                 ?.length >
               0
           )
@@ -563,92 +417,65 @@ export default function CurrentSeasonResults({
 
   /*
     Cerrado:
-    primeras 5 carreras disputadas.
+    R1 → R5
 
     Abierto:
-    todas las disputadas.
+    R1 → última carrera disputada
   */
 
   const visibleRaces =
-    useMemo(
-      () =>
-        showAll
-          ? orderedRaces
-          : orderedRaces.slice(
-              0,
-              5
-            ),
-      [
-        orderedRaces,
-        showAll,
-      ]
-    );
-
-
-  const toggleRace =
-    useCallback(
-      (race) => {
-        setSelectedRound(
-          (current) =>
-            String(
-              current
-            ) ===
-            String(
-              race.round
-            )
-              ? null
-              : race.round
+    showAll
+      ? orderedRaces
+      : orderedRaces.slice(
+          0,
+          5
         );
-      },
-      []
+
+
+
+
+  function toggleRace(
+    race
+  ) {
+    setSelectedRound(
+      (current) =>
+        String(
+          current
+        ) ===
+        String(
+          race.round
+        )
+          ? null
+          : race.round
     );
+  }
 
 
-  const closeRace =
-    useCallback(
-      () => {
-        setSelectedRound(
-          null
-        );
-      },
-      []
+  function toggleAllRaces() {
+    setShowAll(
+      (current) => {
+        const next =
+          !current;
+
+        /*
+          Si volvemos a las
+          primeras cinco,
+          cerramos un resultado
+          que pueda haber quedado
+          abierto más abajo.
+        */
+
+        if (!next) {
+          setSelectedRound(
+            null
+          );
+        }
+
+        return next;
+      }
     );
+  }
 
-
-  const toggleAllRaces =
-    useCallback(
-      () => {
-        setShowAll(
-          (current) => {
-            const next =
-              !current;
-
-
-            /*
-              Si cerramos la lista
-              completa también cerramos
-              cualquier resultado que
-              estuviese abierto.
-            */
-
-            if (!next) {
-              setSelectedRound(
-                null
-              );
-            }
-
-
-            return next;
-          }
-        );
-      },
-      []
-    );
-
-
-  /* ============================================================
-     LOADING
-  ============================================================ */
 
   if (loading) {
     return (
@@ -669,12 +496,10 @@ export default function CurrentSeasonResults({
             </p>
           </div>
 
-
           <div className="current-results-live">
             Actual
           </div>
         </div>
-
 
         <div className="current-results-loading">
           <span />
@@ -687,10 +512,6 @@ export default function CurrentSeasonResults({
     );
   }
 
-
-  /* ============================================================
-     SIN RESULTADOS
-  ============================================================ */
 
   if (
     orderedRaces.length ===
@@ -710,7 +531,6 @@ export default function CurrentSeasonResults({
           </div>
         </div>
 
-
         <div className="current-results-empty">
           Todavía no hay
           resultados disponibles.
@@ -720,24 +540,17 @@ export default function CurrentSeasonResults({
   }
 
 
-  /* ============================================================
-     PANEL
-  ============================================================ */
-
   return (
     <aside className="current-season-results">
-
       <div className="current-season-results-head">
         <div>
           <span>
             Temporada 2026
           </span>
 
-
           <h3>
             Resultados
           </h3>
-
 
           <p>
             {
@@ -748,7 +561,6 @@ export default function CurrentSeasonResults({
           </p>
         </div>
 
-
         <div className="current-results-live">
           Actual
         </div>
@@ -758,6 +570,11 @@ export default function CurrentSeasonResults({
       <div className="current-results-list">
         {visibleRaces.map(
           (race) => {
+            const country =
+              race.Circuit
+                ?.Location
+                ?.country;
+
             const isOpen =
               String(
                 selectedRound
@@ -766,28 +583,85 @@ export default function CurrentSeasonResults({
                 race.round
               );
 
-
             return (
-              <RaceResultItem
+              <div
+                className={`current-race-result-wrapper ${
+                  isOpen
+                    ? "is-open"
+                    : ""
+                }`}
                 key={
                   `${race.season}-${race.round}`
                 }
-                race={
-                  race
-                }
-                isOpen={
-                  isOpen
-                }
-                getTeamColor={
-                  getTeamColor
-                }
-                onToggle={
-                  toggleRace
-                }
-                onClose={
-                  closeRace
-                }
-              />
+              >
+                <button
+                  type="button"
+                  className="current-race-result-card"
+                  onClick={() =>
+                    toggleRace(
+                      race
+                    )
+                  }
+                  aria-expanded={
+                    isOpen
+                  }
+                >
+                  <div className="current-race-result-info">
+                    <div className="current-race-result-meta">
+                      <CountryFlag
+                        country={
+                          country
+                        }
+                      />
+
+                      <span>
+                        R
+                        {
+                          race.round
+                        }
+                      </span>
+
+                      <span>
+                        {formatCurrentRaceDate(
+                          race.date
+                        )}
+                      </span>
+                    </div>
+
+                    <strong>
+                      {
+                        race.raceName
+                      }
+                    </strong>
+                  </div>
+
+                  <RacePodium
+                    race={
+                      race
+                    }
+                    getTeamColor={
+                      getTeamColor
+                    }
+                  />
+
+                  <span className="current-race-result-arrow">
+                    {isOpen
+                      ? "−"
+                      : "+"}
+                  </span>
+                </button>
+
+                {isOpen && (
+                  <FullRaceResult
+                    race={race}
+                    getTeamColor={getTeamColor}
+                    onOpenRaceHub={onOpenRaceHub}
+                    onClose={() =>
+                      setSelectedRound(null)
+                    }
+                  />
+                )}
+              </div>
             );
           }
         )}
@@ -809,7 +683,6 @@ export default function CurrentSeasonResults({
               : "Ver todas las carreras"}
           </span>
 
-
           <span>
             {showAll
               ? "↑"
@@ -817,6 +690,7 @@ export default function CurrentSeasonResults({
           </span>
         </button>
       )}
+
     </aside>
   );
 }

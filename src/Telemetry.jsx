@@ -1571,6 +1571,351 @@ function LineChart({
   );
 }
 
+
+function validStintBounds(stint, fallbackMaxLap = null) {
+  const start = Number(stint?.lap_start);
+  const rawEnd =
+    stint?.lap_end === null || stint?.lap_end === undefined
+      ? fallbackMaxLap
+      : Number(stint.lap_end);
+
+  if (!Number.isFinite(start) || start <= 0) return null;
+
+  const end = Number.isFinite(rawEnd) && rawEnd >= start ? rawEnd : start;
+
+  return { start, end };
+}
+
+function buildPaceTrendSegments(points, drivers) {
+  const driverMap = new Map(
+    drivers.map((driver, index) => [
+      Number(driver.driver_number),
+      { driver, index },
+    ])
+  );
+
+  const groups = new Map();
+
+  points.forEach((point) => {
+    const driverNumber = Number(point.driverNumber);
+    const stintKey = point.stintNumber ?? `compound-${point.compound || "unknown"}`;
+    const key = `${driverNumber}-${stintKey}`;
+
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(point);
+  });
+
+  const segments = [];
+
+  groups.forEach((groupPoints) => {
+    if (groupPoints.length < 4) return;
+
+    const ordered = [...groupPoints].sort((a, b) => a.lapNumber - b.lapNumber);
+    const slope = regressionSlope(ordered);
+
+    if (slope === null) return;
+
+    const meanX =
+      ordered.reduce((sum, point) => sum + Number(point.lapNumber), 0) /
+      ordered.length;
+    const meanY =
+      ordered.reduce((sum, point) => sum + Number(point.lapTime), 0) /
+      ordered.length;
+    const intercept = meanY - slope * meanX;
+
+    const first = ordered[0];
+    const last = ordered[ordered.length - 1];
+    const meta = driverMap.get(Number(first.driverNumber));
+
+    if (!meta) return;
+
+    segments.push({
+      driver: meta.driver,
+      driverIndex: meta.index,
+      driverNumber: Number(first.driverNumber),
+      stintNumber: first.stintNumber,
+      compound: normalizeCompound(first.compound),
+      tyreAgeStart: first.tyreAge,
+      laps: ordered.length,
+      startLap: Number(first.lapNumber),
+      endLap: Number(last.lapNumber),
+      startTime: intercept + slope * Number(first.lapNumber),
+      endTime: intercept + slope * Number(last.lapNumber),
+      slope,
+    });
+  });
+
+  return segments.sort((a, b) => {
+    if (a.driverIndex !== b.driverIndex) return a.driverIndex - b.driverIndex;
+    return a.startLap - b.startLap;
+  });
+}
+
+function trendDashForMarker(marker) {
+  if (marker === "diamond") return "10 6";
+  if (marker === "square") return "4 5";
+  if (marker === "triangle") return "14 5 3 5";
+  return null;
+}
+
+function TyreStrategyPanel({ stints, drivers, sessionName = "" }) {
+  const selectedNumbers = new Set(drivers.map((driver) => Number(driver.driver_number)));
+
+  const relevant = stints
+    .filter((stint) => selectedNumbers.has(Number(stint.driver_number)))
+    .map((stint) => ({
+      ...stint,
+      lap_start: Number(stint.lap_start),
+      lap_end:
+        stint.lap_end === null || stint.lap_end === undefined
+          ? null
+          : Number(stint.lap_end),
+    }))
+    .filter((stint) => Number.isFinite(stint.lap_start) && stint.lap_start > 0);
+
+  if (!relevant.length || !drivers.length) return null;
+
+  const maxLap = Math.max(
+    1,
+    ...relevant.map((stint) =>
+      Number.isFinite(stint.lap_end) ? stint.lap_end : stint.lap_start
+    )
+  );
+
+  const compounds = [...new Set(
+    relevant
+      .map((stint) => normalizeCompound(stint.compound))
+      .filter((compound) => compound && compound !== "—")
+  )];
+
+  const rows = drivers
+    .map((driver, index) => {
+      const own = driverStints(relevant, driver.driver_number)
+        .map((stint) => {
+          const bounds = validStintBounds(stint, maxLap);
+          return bounds ? { ...stint, bounds } : null;
+        })
+        .filter(Boolean);
+
+      return { driver, index, stints: own };
+    })
+    .filter((row) => row.stints.length);
+
+  if (!rows.length) return null;
+
+  const allStints = rows.flatMap((row) =>
+    row.stints.map((stint) => ({ ...stint, driver: row.driver }))
+  );
+
+  const longest = [...allStints].sort((a, b) => {
+    const lengthA = a.bounds.end - a.bounds.start + 1;
+    const lengthB = b.bounds.end - b.bounds.start + 1;
+    return lengthB - lengthA;
+  })[0];
+
+  const firstStops = rows
+    .map((row) => {
+      if (row.stints.length < 2) return null;
+      return {
+        driver: row.driver,
+        lap: row.stints[0].bounds.end,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.lap - b.lap);
+
+  const isRaceLike = /race|sprint/i.test(sessionName || "");
+
+  return (
+    <section className="tyre-strategy-panel">
+      <div className="tyre-strategy-head">
+        <div>
+          <span>{isRaceLike ? "Estrategia y neumáticos" : "Uso de neumáticos"}</span>
+          <h3>{isRaceLike ? "Secuencia de stints" : "Stints de la sesión"}</h3>
+        </div>
+
+        <div className="tyre-strategy-legend">
+          {compounds.map((compound) => (
+            <span key={compound}>
+              <i style={{ background: compoundColor(compound) }} />
+              {compound}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="tyre-strategy-scale">
+        <span>V1</span>
+        <span>V{Math.max(1, Math.round(maxLap * 0.25))}</span>
+        <span>V{Math.max(1, Math.round(maxLap * 0.5))}</span>
+        <span>V{Math.max(1, Math.round(maxLap * 0.75))}</span>
+        <span>V{maxLap}</span>
+      </div>
+
+      <div className="tyre-strategy-rows">
+        {rows.map(({ driver, index, stints: own }) => {
+          const color = driverColor(driver, index);
+
+          return (
+            <div
+              className="tyre-strategy-row"
+              key={driver.driver_number}
+              style={{ "--driver-color": color }}
+            >
+              <div className="tyre-strategy-driver">
+                <i />
+                <div>
+                  <strong>{driver.name_acronym}</strong>
+                  <small>{driver.team_name}</small>
+                </div>
+              </div>
+
+              <div className="tyre-strategy-track">
+                {own.map((stint) => {
+                  const start = stint.bounds.start;
+                  const end = stint.bounds.end;
+                  const left = ((start - 1) / maxLap) * 100;
+                  const width = ((end - start + 1) / maxLap) * 100;
+                  const compound = normalizeCompound(stint.compound);
+                  const length = end - start + 1;
+
+                  return (
+                    <div
+                      className="tyre-strategy-segment"
+                      key={`${driver.driver_number}-${stint.stint_number}-${start}`}
+                      style={{
+                        left: `${left}%`,
+                        width: `${Math.max(width, 0.8)}%`,
+                        "--compound-color": compoundColor(compound),
+                      }}
+                    >
+                      <span className="tyre-strategy-segment-label">
+                        {width > 10 ? compound : ""}
+                      </span>
+
+                      <div className="tyre-strategy-tooltip">
+                        <strong>{compound}</strong>
+                        <span>Stint {stint.stint_number ?? "—"}</span>
+                        <span>V{start}–V{end}</span>
+                        <span>{length} vueltas</span>
+                      </div>
+
+                      {end < maxLap && <i className="tyre-pit-marker" />}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="tyre-strategy-insights">
+        {firstStops[0] && (
+          <div>
+            <span>Primera parada</span>
+            <strong>{firstStops[0].driver.name_acronym} · V{firstStops[0].lap}</strong>
+          </div>
+        )}
+
+        {firstStops.length > 1 && (
+          <div>
+            <span>Más tarde entre seleccionados</span>
+            <strong>
+              {firstStops[firstStops.length - 1].driver.name_acronym} · V{firstStops[firstStops.length - 1].lap}
+            </strong>
+          </div>
+        )}
+
+        {longest && (
+          <div>
+            <span>Stint más largo</span>
+            <strong>
+              {longest.driver.name_acronym} · {normalizeCompound(longest.compound)} · {longest.bounds.end - longest.bounds.start + 1} v
+            </strong>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function TyreDegradationPanel({ points, drivers }) {
+  const segments = useMemo(
+    () => buildPaceTrendSegments(points, drivers),
+    [points, drivers]
+  );
+
+  if (!segments.length) return null;
+
+  return (
+    <section className="tyre-degradation-panel">
+      <div className="tyre-degradation-head">
+        <div>
+          <span>Degradación estimada</span>
+          <h3>Tendencia del tiempo dentro de cada stint</h3>
+        </div>
+        <small>
+          Pendiente lineal del stint. Combustible, tráfico y evolución de pista también influyen.
+        </small>
+      </div>
+
+      <div className="tyre-degradation-grid">
+        {segments.map((segment) => {
+          const driver = segment.driver;
+          const color = paceDriverColor(driver, drivers, segment.driverIndex);
+          const positive = segment.slope > 0.002;
+          const negative = segment.slope < -0.002;
+
+          return (
+            <article
+              className="tyre-degradation-card"
+              key={`${segment.driverNumber}-${segment.stintNumber}-${segment.startLap}`}
+              style={{ "--driver-color": color }}
+            >
+              <div className="tyre-degradation-driver">
+                <i />
+                <div>
+                  <strong>{driver.name_acronym}</strong>
+                  <small>{driver.team_name}</small>
+                </div>
+                <span
+                  className="tyre-degradation-compound"
+                  style={{ "--compound-color": compoundColor(segment.compound) }}
+                >
+                  {segment.compound}
+                </span>
+              </div>
+
+              <div className="tyre-degradation-value">
+                <strong>
+                  {segment.slope >= 0 ? "+" : ""}
+                  {segment.slope.toFixed(3)}
+                </strong>
+                <span>s/vuelta</span>
+              </div>
+
+              <div className={`tyre-degradation-status ${positive ? "losing" : negative ? "improving" : "stable"}`}>
+                {positive
+                  ? `+${Math.round(segment.slope * 1000)} ms por vuelta`
+                  : negative
+                  ? `${Math.round(Math.abs(segment.slope) * 1000)} ms más rápido por vuelta`
+                  : "Tendencia prácticamente estable"}
+              </div>
+
+              <div className="tyre-degradation-meta">
+                <span>Stint {segment.stintNumber ?? "—"}</span>
+                <span>V{segment.startLap}–V{segment.endLap}</span>
+                <span>{segment.laps} vueltas válidas</span>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function RacePaceChart({ points, drivers }) {
   const [hoverPoint, setHoverPoint] = useState(null);
 
@@ -1616,6 +1961,8 @@ function RacePaceChart({ points, drivers }) {
       },
     ])
   );
+
+  const trendSegments = buildPaceTrendSegments(points, drivers);
 
   const hoverKey = hoverPoint
     ? `${hoverPoint.driverNumber}-${hoverPoint.lapNumber}`
@@ -1688,6 +2035,25 @@ function RacePaceChart({ points, drivers }) {
                   V{lap}
                 </text>
               </g>
+            );
+          })}
+
+          {trendSegments.map((segment) => {
+            const meta = driverMap.get(Number(segment.driverNumber));
+            const color = meta?.color || "#ffffff";
+            const marker = meta?.marker || "circle";
+
+            return (
+              <line
+                key={`trend-${segment.driverNumber}-${segment.stintNumber}-${segment.startLap}`}
+                x1={x(segment.startLap)}
+                y1={y(segment.startTime)}
+                x2={x(segment.endLap)}
+                y2={y(segment.endTime)}
+                className="pace-degradation-trend-line"
+                stroke={color}
+                strokeDasharray={trendDashForMarker(marker) || undefined}
+              />
             );
           })}
 
@@ -3033,9 +3399,22 @@ export default function Telemetry() {
               </section>
             )}
 
+            {paceDriverInfo.length > 0 && paceStints.length > 0 && (
+              <TyreStrategyPanel
+                stints={paceStints}
+                drivers={paceDriverInfo}
+                sessionName={selectedSession?.session_name || ""}
+              />
+            )}
+
             {pacePoints.length > 0 && (
               <>
                 <RacePaceChart points={pacePoints} drivers={paceDriverInfo} />
+
+                <TyreDegradationPanel
+                  points={pacePoints}
+                  drivers={paceDriverInfo}
+                />
 
                 <div className="pace-summary-grid">
                   {paceDriverInfo.map((driver, index) => {

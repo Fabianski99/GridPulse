@@ -2205,3 +2205,413 @@
 .telemetry-series-line[stroke-dasharray] {
   filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.08));
 }
+
+
+/* ============================================================
+   GRIDPULSE · ESTRATEGIA Y NEUMÁTICOS
+============================================================ */
+.tyre-strategy-panel,
+.tyre-degradation-panel {
+  margin-top: 18px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(0, 245, 212, 0.045), transparent 28rem),
+    #090c0f;
+  contain: layout style paint;
+}
+
+.tyre-strategy-head,
+.tyre-degradation-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.tyre-strategy-head > div:first-child > span,
+.tyre-degradation-head > div:first-child > span {
+  display: block;
+  color: #00f5d4;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+.tyre-strategy-head h3,
+.tyre-degradation-head h3 {
+  margin: 5px 0 0;
+  font-size: 20px;
+  letter-spacing: -0.5px;
+}
+
+.tyre-degradation-head small {
+  max-width: 520px;
+  color: #718094;
+  font-size: 10px;
+  line-height: 1.55;
+  text-align: right;
+}
+
+.tyre-strategy-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px 12px;
+}
+
+.tyre-strategy-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #8894a5;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.tyre-strategy-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: 0 0 10px currentColor;
+}
+
+.tyre-strategy-scale {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  margin: 0 0 7px 142px;
+  color: #596577;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.tyre-strategy-scale span:nth-child(1) { text-align: left; }
+.tyre-strategy-scale span:nth-child(2),
+.tyre-strategy-scale span:nth-child(3),
+.tyre-strategy-scale span:nth-child(4) { text-align: center; }
+.tyre-strategy-scale span:nth-child(5) { text-align: right; }
+
+.tyre-strategy-rows {
+  display: grid;
+  gap: 9px;
+}
+
+.tyre-strategy-row {
+  display: grid;
+  grid-template-columns: 125px minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  min-height: 54px;
+}
+
+.tyre-strategy-driver {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 4px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+}
+
+.tyre-strategy-driver > i {
+  width: 4px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--driver-color);
+  box-shadow: 0 0 13px var(--driver-color);
+}
+
+.tyre-strategy-driver strong,
+.tyre-degradation-driver strong {
+  display: block;
+  color: #f4f7fa;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.tyre-strategy-driver small,
+.tyre-degradation-driver small {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: #687688;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tyre-strategy-track {
+  position: relative;
+  height: 36px;
+  overflow: visible;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: 10px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.018) 0,
+      rgba(255, 255, 255, 0.018) calc(25% - 1px),
+      rgba(255, 255, 255, 0.055) 25%,
+      rgba(255, 255, 255, 0.018) calc(25% + 1px)
+    ),
+    rgba(255, 255, 255, 0.018);
+}
+
+.tyre-strategy-segment {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  min-width: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--compound-color) 88%, white 12%),
+      color-mix(in srgb, var(--compound-color) 72%, black 28%)
+    );
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.09),
+    0 0 16px color-mix(in srgb, var(--compound-color) 28%, transparent);
+  cursor: default;
+}
+
+.tyre-strategy-segment-label {
+  overflow: hidden;
+  padding: 0 6px;
+  color: #080a0d;
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: 0.4px;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.tyre-pit-marker {
+  position: absolute;
+  z-index: 4;
+  right: -2px;
+  top: -8px;
+  width: 4px;
+  height: 38px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.55);
+}
+
+.tyre-strategy-tooltip {
+  position: absolute;
+  z-index: 20;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  min-width: 150px;
+  display: grid;
+  gap: 4px;
+  padding: 10px 11px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, 6px);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 10px;
+  color: #dce2e9;
+  background: #0b0e12;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.38);
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s ease;
+}
+
+.tyre-strategy-tooltip strong {
+  color: var(--compound-color);
+  font-size: 11px;
+}
+
+.tyre-strategy-tooltip span {
+  color: #7e8999;
+  font-size: 9px;
+}
+
+.tyre-strategy-segment:hover .tyre-strategy-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+
+.tyre-strategy-insights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.tyre-strategy-insights > div {
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.022);
+}
+
+.tyre-strategy-insights span {
+  display: block;
+  color: #647083;
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.55px;
+}
+
+.tyre-strategy-insights strong {
+  display: block;
+  margin-top: 5px;
+  overflow: hidden;
+  color: #eef2f6;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   DEGRADACIÓN / TENDENCIA
+============================================================ */
+.pace-degradation-trend-line {
+  fill: none;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  opacity: 0.78;
+  pointer-events: none;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.08));
+}
+
+.tyre-degradation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+  gap: 10px;
+}
+
+.tyre-degradation-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--driver-color) 24%, rgba(255, 255, 255, 0.06));
+  border-radius: 14px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--driver-color) 6%, transparent), transparent 55%),
+    rgba(255, 255, 255, 0.018);
+}
+
+.tyre-degradation-driver {
+  display: grid;
+  grid-template-columns: 4px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+}
+
+.tyre-degradation-driver > i {
+  width: 4px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--driver-color);
+  box-shadow: 0 0 12px var(--driver-color);
+}
+
+.tyre-degradation-compound {
+  padding: 5px 7px;
+  border: 1px solid color-mix(in srgb, var(--compound-color) 60%, transparent);
+  border-radius: 999px;
+  color: var(--compound-color);
+  background: color-mix(in srgb, var(--compound-color) 8%, transparent);
+  font-size: 8px;
+  font-weight: 950;
+}
+
+.tyre-degradation-value {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 15px;
+}
+
+.tyre-degradation-value strong {
+  color: #ffffff;
+  font-size: 27px;
+  line-height: 1;
+  letter-spacing: -1px;
+}
+
+.tyre-degradation-value span {
+  color: #6f7b8c;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.tyre-degradation-status {
+  margin-top: 8px;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.tyre-degradation-status.losing { color: #ff7d88; }
+.tyre-degradation-status.improving { color: #62e6b8; }
+.tyre-degradation-status.stable { color: #a0a9b6; }
+
+.tyre-degradation-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.tyre-degradation-meta span {
+  color: #657184;
+  font-size: 8px;
+  font-weight: 750;
+}
+
+@media (max-width: 900px) {
+  .tyre-strategy-head,
+  .tyre-degradation-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .tyre-strategy-legend {
+    justify-content: flex-start;
+  }
+
+  .tyre-degradation-head small {
+    text-align: left;
+  }
+
+  .tyre-strategy-insights {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 650px) {
+  .tyre-strategy-panel,
+  .tyre-degradation-panel {
+    padding: 14px;
+  }
+
+  .tyre-strategy-scale {
+    margin-left: 0;
+  }
+
+  .tyre-strategy-row {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+
+  .tyre-strategy-driver {
+    grid-template-columns: 4px minmax(0, 1fr);
+  }
+
+  .tyre-strategy-track {
+    height: 38px;
+  }
+}

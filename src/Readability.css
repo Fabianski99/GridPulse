@@ -1,0 +1,603 @@
+/* ============================================================
+   GRIDPULSE · READABILITY PATCH
+   Objetivo:
+   - Mantener el diseño actual.
+   - Aumentar el microtexto que estaba quedando demasiado pequeño.
+   - Mejorar contraste de fechas, etiquetas, subtítulos y datos secundarios.
+   ============================================================ */
+
+
+/* ============================================================
+   BASE DE MICROTEXTOS
+============================================================ */
+
+.eyebrow {
+  font-size: 12px !important;
+  line-height: 1.35 !important;
+  letter-spacing: 1.35px !important;
+}
+
+
+/* ============================================================
+   HOME · CALENDARIO / PRÓXIMO GP
+============================================================ */
+
+.next-label,
+.featured-next-badge,
+.featured-sprint-badge {
+  font-size: 10px !important;
+}
+
+.round {
+  font-size: 13px !important;
+  color: #7f8a9b !important;
+}
+
+.gp-number {
+  font-size: 13px !important;
+}
+
+.gp-place {
+  font-size: 12px !important;
+  color: #8994a4 !important;
+}
+
+.gp-date {
+  font-size: 13px !important;
+  color: #a4adba !important;
+}
+
+.featured-countdown span {
+  font-size: 12px !important;
+  color: #8c97a6 !important;
+}
+
+.featured-location span {
+  font-size: 13px !important;
+  color: #a8b2bf !important;
+}
+
+.featured-weekend-header span {
+  font-size: 12px !important;
+}
+
+.featured-weekend-header small {
+  font-size: 12px !important;
+  color: #7e8999 !important;
+}
+
+.weekend-session-code {
+  font-size: 12px !important;
+}
+
+.weekend-session-info strong {
+  font-size: 15px !important;
+}
+
+.weekend-session-info span {
+  font-size: 13px !important;
+  color: #8a96a7 !important;
+}
+
+.featured-expand-hint {
+  font-size: 10px !important;
+  color: #8590a0 !important;
+}
+
+
+/* ============================================================
+   HOME · CAMPEONATOS
+============================================================ */
+
+.championship-kicker {
+  font-size: 10px !important;
+}
+
+.leader-position-label {
+  font-size: 11px !important;
+}
+
+.driver-name small {
+  font-size: 12px !important;
+  color: #8490a0 !important;
+}
+
+.points span,
+.leader-points span {
+  font-size: 10px !important;
+  color: #8290a2 !important;
+}
+
+.leader-gap span {
+  font-size: 11px !important;
+  color: #8491a2 !important;
+}
+
+.standings-toggle {
+  font-size: 11px !important;
+}
+
+.summary-hint {
+  font-size: 13px !important;
+  color: #7f8999 !important;
+}
+
+
+/* ============================================================
+   RESULTADOS 2026
+============================================================ */
+
+.current-season-results-head > div:first-child > span {
+  font-size: 11px !important;
+}
+
+.current-season-results-head p {
+  font-size: 13px !important;
+  color: #8490a0 !important;
+}
+
+.current-results-live {
+  font-size: 10px !important;
+}
+
+.current-race-result-meta {
+  font-size: 11px !important;
+  color: #8490a0 !important;
+}
+
+.current-podium-position {
+  font-size: 11px !important;
+}
+
+.current-podium-team {
+  font-size: 11px !important;
+  color: #939eac !important;
+  line-height: 1.1 !important;
+}
+
+.current-results-hidden-count,
+.current-results-toggle {
+  font-size: 11px !important;
+}
+
+.current-result-detail-eyebrow {
+  font-size: 11px !important;
+}
+
+.current-result-detail-head p {
+  font-size: 12px !important;
+  color: #8590a0 !important;
+}
+
+.current-result-close {
+  font-size: 10px !important;
+}
+
+.current-result-table-head {
+  font-size: 10px !important;
+  color: #748195 !important;
+}
+
+.current-result-position {
+  font-size: 13px !important;
+}
+
+.current-result-driver small {
+  font-size: 11px !important;
+  color: #8692a2 !important;
+}
+
+.current-result-constructor,
+.current-result-grid {
+  font-size: 12px !important;
+  color: #8995a6 !important;
+}
+
+
+/* ============================================================
+   TEMPORADAS / CAMPEONES
+============================================================ */
+
+.champion-label {
+  font-size: 12px !important;
+}
+
+.champion-info p {
+  font-size: 14px !important;
+  color: #8793a3 !important;
+}
+
+.champion-stat span {
+  font-size: 12px !important;
+  color: #7d8999 !important;
+}
+
+
+/* ============================================================
+   CIRCUITOS
+============================================================ */
+
+.circuits-hero-number span {
+  font-size: 13px !important;
+}
+
+.circuits-toolbar button span {
+  font-size: 12px !important;
+}
+
+.circuit-country {
+  font-size: 13px !important;
+}
+
+.circuit-card-heading p {
+  font-size: 13px !important;
+  color: #8290a2 !important;
+}
+
+.circuit-season-badge {
+  font-size: 11px !important;
+}
+
+.circuit-track-fallback-text {
+  font-size: 13px !important;
+}
+
+.circuit-quick-stats span {
+  font-size: 11px !important;
+}
+
+.circuit-open-text {
+  font-size: 12px !important;
+}
+
+.circuit-detail-eyebrow {
+  font-size: 12px !important;
+}
+
+.circuit-first-gp span {
+  font-size: 11px !important;
+}
+
+.circuit-static-stat span,
+.circuit-static-stat small,
+.circuit-history-title small,
+.circuit-history-stat > span,
+.circuit-history-stat small {
+  font-size: 12px !important;
+  color: #8390a0 !important;
+}
+
+.circuit-history-title span {
+  font-size: 11px !important;
+}
+
+.circuit-sector-heading small,
+.circuit-data-note,
+.circuit-sources {
+  font-size: 11px !important;
+  line-height: 1.55 !important;
+}
+
+.circuit-sector-bar div,
+.circuit-sector-area p {
+  font-size: 12px !important;
+}
+
+
+/* ============================================================
+   TELEMETRÍA
+============================================================ */
+
+.telemetry-live-box small,
+.telemetry-live-footer,
+.telemetry-live-footer button {
+  font-size: 12px !important;
+}
+
+.telemetry-tabs button span {
+  font-size: 11px !important;
+}
+
+.telemetry-field > span {
+  font-size: 11px !important;
+}
+
+.telemetry-context-summary span {
+  font-size: 11px !important;
+}
+
+.telemetry-context-summary small {
+  font-size: 12px !important;
+  color: #8490a0 !important;
+}
+
+.telemetry-metric > span {
+  font-size: 11px !important;
+}
+
+.telemetry-metric small {
+  font-size: 12px !important;
+}
+
+.telemetry-chart-title span:not(.telemetry-chart-legend span) {
+  font-size: 11px !important;
+}
+
+.telemetry-chart-legend span {
+  font-size: 12px !important;
+  color: #8995a6 !important;
+}
+
+.telemetry-axis-text {
+  font-size: 12px !important;
+  fill: #748195 !important;
+}
+
+.telemetry-unit-text {
+  font-size: 11px !important;
+  fill: #7d8999 !important;
+}
+
+.telemetry-switch {
+  font-size: 12px !important;
+}
+
+.pace-driver-chip small {
+  font-size: 11px !important;
+  color: #8692a2 !important;
+}
+
+.pace-selection-count {
+  font-size: 12px !important;
+}
+
+
+/* ============================================================
+   RACE HUB · ETIQUETAS GENERALES
+============================================================ */
+
+.racehub-kicker {
+  font-size: 12px !important;
+}
+
+.racehub-back {
+  font-size: 13px !important;
+}
+
+.racehub-race-select > span {
+  font-size: 10px !important;
+  color: #8793a4 !important;
+}
+
+.racehub-race-select select {
+  font-size: 14px !important;
+}
+
+.racehub-hero-badges span {
+  font-size: 10px !important;
+}
+
+.racehub-country {
+  font-size: 13px !important;
+}
+
+.racehub-hero-meta span {
+  font-size: 12px !important;
+  color: #aab4c1 !important;
+}
+
+.racehub-hero-statline span {
+  font-size: 12px !important;
+  color: #8793a4 !important;
+}
+
+.racehub-hero-statline strong {
+  font-size: 20px !important;
+}
+
+
+/* ============================================================
+   RACE HUB · PESTAÑAS
+============================================================ */
+
+.racehub-tabs button {
+  font-size: 13px !important;
+}
+
+
+/* ============================================================
+   RACE HUB · CABECERAS DE TARJETAS
+============================================================ */
+
+.racehub-card-heading span {
+  font-size: 12px !important;
+}
+
+.racehub-card-heading small {
+  font-size: 13px !important;
+  color: #8f9aaa !important;
+  line-height: 1.5 !important;
+}
+
+
+/* ============================================================
+   RACE HUB · PODIO
+============================================================ */
+
+.racehub-podium-rank {
+  font-size: 13px !important;
+  color: #8491a2 !important;
+}
+
+.racehub-podium-place p {
+  font-size: 15px !important;
+}
+
+.racehub-podium-place small {
+  font-size: 12px !important;
+  color: #8b97a7 !important;
+}
+
+.racehub-podium-summary span {
+  font-size: 11px !important;
+  color: #8390a1 !important;
+}
+
+.racehub-podium-summary strong {
+  font-size: 16px !important;
+}
+
+
+/* ============================================================
+   RACE HUB · SESIONES
+============================================================ */
+
+.racehub-session-code {
+  font-size: 11px !important;
+}
+
+.racehub-session-copy strong {
+  font-size: 15px !important;
+}
+
+.racehub-session-copy small {
+  font-size: 12px !important;
+  color: #8c98a8 !important;
+  line-height: 1.35 !important;
+}
+
+.racehub-session-status {
+  font-size: 10px !important;
+}
+
+
+/* ============================================================
+   RACE HUB · DATOS CLAVE
+============================================================ */
+
+.racehub-facts-grid span,
+.racehub-facts-grid small {
+  font-size: 12px !important;
+  color: #8793a3 !important;
+  line-height: 1.4 !important;
+}
+
+.racehub-facts-grid strong {
+  font-size: 23px !important;
+}
+
+
+/* ============================================================
+   RACE HUB · ABANDONOS
+============================================================ */
+
+.racehub-retirement-driver strong {
+  font-size: 15px !important;
+}
+
+.racehub-retirement-driver b {
+  font-size: 13px !important;
+}
+
+.racehub-retirement-driver small {
+  font-size: 11px !important;
+  color: #8793a3 !important;
+}
+
+.racehub-retirement-status {
+  font-size: 11px !important;
+  color: #99a3b0 !important;
+}
+
+
+/* ============================================================
+   RACE HUB · TABLAS
+============================================================ */
+
+.racehub-result-head {
+  font-size: 11px !important;
+  color: #768397 !important;
+}
+
+.racehub-result-position {
+  font-size: 15px !important;
+}
+
+.racehub-result-driver strong {
+  font-size: 17px !important;
+}
+
+.racehub-result-driver small {
+  font-size: 12px !important;
+  color: #8894a4 !important;
+}
+
+.racehub-result-team,
+.racehub-result-time,
+.racehub-result-detail {
+  font-size: 13px !important;
+}
+
+.racehub-result-time {
+  font-size: 14px !important;
+}
+
+.racehub-grid-slot strong {
+  font-size: 17px !important;
+}
+
+.racehub-grid-slot small {
+  font-size: 12px !important;
+  color: #8995a5 !important;
+}
+
+
+/* ============================================================
+   RACE HUB · PREVIEW
+============================================================ */
+
+.racehub-preview-grid span {
+  font-size: 11px !important;
+}
+
+.racehub-preview-grid strong {
+  font-size: 18px !important;
+}
+
+.racehub-preview-grid small {
+  font-size: 12px !important;
+  color: #8b97a7 !important;
+}
+
+
+/* ============================================================
+   FOOTER
+============================================================ */
+
+.footer {
+  font-size: 12px !important;
+  color: #778394 !important;
+}
+
+
+/* ============================================================
+   MÓVIL
+   Mantiene el aumento, pero evita que los paneles se saturen.
+============================================================ */
+
+@media (max-width: 760px) {
+  .racehub-card-heading small,
+  .racehub-session-copy small,
+  .racehub-facts-grid span,
+  .racehub-facts-grid small,
+  .racehub-result-driver small,
+  .racehub-grid-slot small,
+  .current-podium-team,
+  .weekend-session-info span {
+    font-size: 11px !important;
+  }
+
+  .racehub-result-head {
+    font-size: 10px !important;
+  }
+}

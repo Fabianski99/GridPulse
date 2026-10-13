@@ -1,0 +1,1892 @@
+/* ============================================================
+   GRIDPULSE · RACE HUB
+============================================================ */
+
+.racehub-page {
+  padding-top: 28px;
+}
+
+.racehub-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.racehub-kicker {
+  color: #00f5d4;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+}
+
+.racehub-toolbar h1 {
+  margin: 7px 0 0;
+  font-size: clamp(34px, 4.4vw, 62px);
+  line-height: 0.96;
+  letter-spacing: -2.2px;
+}
+
+.racehub-toolbar-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.racehub-back {
+  height: 44px;
+  padding: 0 15px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 11px;
+  color: #8e9aaa;
+  background: rgba(255,255,255,.025);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+  transition: color .2s ease, border-color .2s ease, background .2s ease;
+}
+
+.racehub-back:hover {
+  color: #00f5d4;
+  border-color: rgba(0,245,212,.22);
+  background: rgba(0,245,212,.035);
+}
+
+.racehub-race-select {
+  display: grid;
+  gap: 5px;
+}
+
+.racehub-race-select > span {
+  color: #697588;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.racehub-race-select select {
+  width: min(360px, 42vw);
+  height: 44px;
+  padding: 0 38px 0 13px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 11px;
+  outline: none;
+  color: #f4f7fa;
+  background: #0e1217;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 780;
+  cursor: pointer;
+}
+
+.racehub-race-select select:focus {
+  border-color: rgba(0,245,212,.45);
+  box-shadow: 0 0 0 3px rgba(0,245,212,.055);
+}
+
+/* ============================================================
+   HERO
+============================================================ */
+
+.racehub-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(300px, .95fr);
+  grid-template-areas:
+    "copy track"
+    "stats stats";
+  gap: 20px 34px;
+  padding: 30px;
+  border: 1px solid rgba(0,245,212,.22);
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at 75% 10%, rgba(0,245,212,.09), transparent 36%),
+    linear-gradient(145deg, #10151a, #080a0d 68%);
+  box-shadow: inset 0 0 60px rgba(0,245,212,.026), 0 24px 60px rgba(0,0,0,.22);
+  contain: layout style paint;
+}
+
+.racehub-hero.is-complete {
+  border-color: rgba(0,245,212,.3);
+}
+
+.racehub-hero > .flag-background {
+  opacity: .055;
+}
+
+.racehub-hero-copy,
+.racehub-track-stage,
+.racehub-hero-statline {
+  position: relative;
+  z-index: 2;
+}
+
+.racehub-hero-copy {
+  grid-area: copy;
+  align-self: center;
+  min-width: 0;
+}
+
+.racehub-hero-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 20px;
+}
+
+.racehub-hero-badges span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 999px;
+  color: #8390a1;
+  background: rgba(255,255,255,.025);
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: .75px;
+  text-transform: uppercase;
+}
+
+.racehub-hero-badges .complete {
+  color: #00f5d4;
+  border-color: rgba(0,245,212,.22);
+  background: rgba(0,245,212,.06);
+}
+
+.racehub-hero-badges .preview {
+  color: #73baff;
+  border-color: rgba(57,166,255,.22);
+  background: rgba(57,166,255,.06);
+}
+
+.racehub-hero-badges .sprint {
+  color: #ffad59;
+  border-color: rgba(255,149,0,.28);
+  background: rgba(255,149,0,.065);
+}
+
+.racehub-country {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #00f5d4;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+}
+
+.racehub-country .country-flag {
+  width: 22px;
+  height: 16px;
+}
+
+.racehub-hero h2 {
+  margin: 10px 0 0;
+  max-width: 760px;
+  font-size: clamp(38px, 5.5vw, 76px);
+  line-height: .94;
+  letter-spacing: -3px;
+}
+
+.racehub-hero-copy > p {
+  margin: 13px 0 0;
+  color: #8490a0;
+  font-size: 15px;
+}
+
+.racehub-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.racehub-hero-meta span {
+  padding: 8px 11px;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 9px;
+  color: #9ba6b5;
+  background: rgba(255,255,255,.025);
+  font-size: 10px;
+}
+
+.racehub-track-stage {
+  grid-area: track;
+  min-height: 300px;
+  display: grid;
+  place-items: center;
+  border-radius: 22px;
+  background: radial-gradient(circle, rgba(0,245,212,.13), rgba(0,245,212,.03) 46%, transparent 72%);
+}
+
+.racehub-track-image,
+.racehub-track-fallback {
+  width: min(470px, 92%);
+  height: 250px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 12px rgba(0,245,212,.32));
+  transform: translateZ(0);
+}
+
+.racehub-track-fallback {
+  color: #00f5d4;
+}
+
+.racehub-hero-statline {
+  grid-area: stats;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 9px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255,255,255,.065);
+}
+
+.racehub-hero-statline > div {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(255,255,255,.055);
+  border-radius: 13px;
+  background: rgba(255,255,255,.022);
+}
+
+.racehub-hero-statline span {
+  display: block;
+  color: #647184;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .7px;
+  text-transform: uppercase;
+}
+
+.racehub-hero-statline strong {
+  display: block;
+  overflow: hidden;
+  margin-top: 5px;
+  color: #f4f7fa;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   TABS
+============================================================ */
+
+.racehub-tabs-shell {
+  position: sticky;
+  top: 72px;
+  z-index: 12;
+  margin: 16px 0 18px;
+  padding: 7px;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 15px;
+  background: rgba(7,9,12,.88);
+  backdrop-filter: blur(14px);
+}
+
+.racehub-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.racehub-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.racehub-tabs button {
+  flex: 0 0 auto;
+  min-height: 37px;
+  padding: 0 13px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: #748194;
+  background: transparent;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: .55px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color .18s ease, background .18s ease, border-color .18s ease;
+}
+
+.racehub-tabs button:hover {
+  color: #dfe5eb;
+  background: rgba(255,255,255,.03);
+}
+
+.racehub-tabs button.active {
+  color: #03110f;
+  border-color: #00f5d4;
+  background: #00f5d4;
+  box-shadow: 0 0 20px rgba(0,245,212,.14);
+}
+
+/* ============================================================
+   CONTENT / CARDS
+============================================================ */
+
+.racehub-content {
+  min-height: 360px;
+}
+
+.racehub-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(340px, .85fr);
+  gap: 14px;
+}
+
+.racehub-card {
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(0,245,212,.035), transparent 34%),
+    #0b0f13;
+  box-shadow: 0 18px 48px rgba(0,0,0,.16);
+  contain: layout style paint;
+}
+
+.racehub-card-heading {
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(255,255,255,.055);
+}
+
+.racehub-card-heading span {
+  display: block;
+  color: #00f5d4;
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.racehub-card-heading h3 {
+  margin: 5px 0 0;
+  font-size: 21px;
+  letter-spacing: -.55px;
+}
+
+.racehub-card-heading small {
+  max-width: 360px;
+  color: #667285;
+  font-size: 9px;
+  text-align: right;
+}
+
+.racehub-podium-card,
+.racehub-weekend-card {
+  min-height: 330px;
+}
+
+.racehub-facts-card,
+.racehub-retirements-card {
+  min-height: 220px;
+}
+
+/* ============================================================
+   PODIUM
+============================================================ */
+
+.racehub-podium {
+  min-height: 245px;
+  display: grid;
+  grid-template-columns: .92fr 1.12fr .92fr;
+  align-items: end;
+  gap: 9px;
+  padding: 22px 18px 18px;
+}
+
+.racehub-podium-place {
+  position: relative;
+  overflow: hidden;
+  min-height: 155px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 16px;
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 15px;
+  background: linear-gradient(160deg, rgba(255,255,255,.035), rgba(255,255,255,.012));
+}
+
+.racehub-podium-place.p1 {
+  min-height: 190px;
+  border-color: rgba(0,245,212,.15);
+}
+
+.racehub-podium-accent {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 4px;
+  height: 100%;
+}
+
+.racehub-podium-rank {
+  color: #667487;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: .8px;
+}
+
+.racehub-podium-place > strong {
+  display: block;
+  margin-top: 10px;
+  font-size: clamp(27px, 3vw, 42px);
+  line-height: .9;
+  letter-spacing: -1.2px;
+}
+
+.racehub-podium-place p {
+  margin: 8px 0 0;
+  color: #dde3ea;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.racehub-podium-place small {
+  margin-top: 3px;
+  color: #6b7789;
+  font-size: 9px;
+}
+
+.racehub-preview-copy {
+  min-height: 245px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 28px;
+}
+
+.racehub-preview-copy strong {
+  font-size: 24px;
+}
+
+.racehub-preview-copy p {
+  max-width: 620px;
+  margin: 12px 0 0;
+  color: #778496;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* ============================================================
+   SCHEDULE
+============================================================ */
+
+.racehub-schedule-list {
+  padding: 8px;
+}
+
+.racehub-schedule-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 48px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px;
+  border: 0;
+  border-radius: 11px;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background .18s ease;
+}
+
+.racehub-schedule-row:hover {
+  background: rgba(255,255,255,.03);
+}
+
+.racehub-session-code {
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: #89a0b8;
+  background: rgba(255,255,255,.04);
+  font-size: 8px;
+  font-weight: 950;
+}
+
+.racehub-session-code.sprint,
+.racehub-session-code.sprintQualifying {
+  color: #ffad59;
+  background: rgba(255,149,0,.075);
+}
+
+.racehub-session-code.qualifying {
+  color: #a785ff;
+  background: rgba(160,107,255,.085);
+}
+
+.racehub-session-code.race {
+  color: #00f5d4;
+  background: rgba(0,245,212,.075);
+}
+
+.racehub-session-copy {
+  min-width: 0;
+}
+
+.racehub-session-copy strong,
+.racehub-session-copy small {
+  display: block;
+}
+
+.racehub-session-copy strong {
+  font-size: 11px;
+}
+
+.racehub-session-copy small {
+  overflow: hidden;
+  margin-top: 3px;
+  color: #657184;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.racehub-session-status {
+  padding: 5px 7px;
+  border-radius: 999px;
+  color: #677386;
+  background: rgba(255,255,255,.03);
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+}
+
+.racehub-session-status.complete {
+  color: #00f5d4;
+  background: rgba(0,245,212,.05);
+}
+
+.racehub-session-status.live {
+  color: #ff627c;
+  background: rgba(255,41,77,.08);
+}
+
+.racehub-session-status.upcoming {
+  color: #74b9ff;
+  background: rgba(57,166,255,.07);
+}
+
+/* ============================================================
+   FACTS / RETIREMENTS
+============================================================ */
+
+.racehub-facts-grid {
+  display: grid;
+  grid-template-columns: repeat(2,1fr);
+  gap: 8px;
+  padding: 14px;
+}
+
+.racehub-facts-grid > div {
+  min-height: 72px;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,.055);
+  border-radius: 11px;
+  background: rgba(255,255,255,.02);
+}
+
+.racehub-facts-grid span,
+.racehub-facts-grid small {
+  display: block;
+  color: #657184;
+  font-size: 8px;
+}
+
+.racehub-facts-grid strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 17px;
+}
+
+.racehub-facts-grid small {
+  margin-top: 3px;
+}
+
+.racehub-retirement-list {
+  display: grid;
+  grid-template-columns: repeat(2,1fr);
+  gap: 7px;
+  padding: 14px;
+}
+
+.racehub-retirement-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 11px;
+  border: 1px solid rgba(255,255,255,.05);
+  border-radius: 10px;
+  background: rgba(255,255,255,.018);
+}
+
+.racehub-retirement-list strong {
+  color: #ff5b72;
+  font-size: 11px;
+}
+
+.racehub-retirement-list span {
+  color: #7b8797;
+  font-size: 8px;
+  text-align: right;
+}
+
+.racehub-clean-race {
+  padding: 28px 18px;
+  color: #718094;
+  font-size: 11px;
+}
+
+/* ============================================================
+   SESSION RESULT TABLE
+============================================================ */
+
+.racehub-session-card,
+.racehub-grid-card {
+  min-height: 430px;
+}
+
+.racehub-classification {
+  padding-bottom: 4px;
+}
+
+.racehub-result-head,
+.racehub-result-row {
+  display: grid;
+  grid-template-columns: 58px minmax(170px,1.25fr) minmax(120px,.8fr) minmax(120px,.7fr) minmax(120px,.65fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.racehub-result-head.is-qualifying,
+.racehub-result-row.is-qualifying {
+  grid-template-columns: 58px minmax(170px,1.2fr) minmax(120px,.8fr) 100px 100px 100px;
+}
+
+.racehub-result-head {
+  padding: 10px 17px;
+  color: #586577;
+  font-size: 7px;
+  font-weight: 950;
+  letter-spacing: .7px;
+  text-transform: uppercase;
+}
+
+.racehub-result-row {
+  min-height: 58px;
+  padding: 8px 17px;
+  border-top: 1px solid rgba(255,255,255,.045);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 58px;
+}
+
+.racehub-result-row:nth-child(2),
+.racehub-result-row:nth-child(3),
+.racehub-result-row:nth-child(4) {
+  background: linear-gradient(90deg, rgba(0,245,212,.02), transparent 65%);
+}
+
+.racehub-result-position {
+  color: #768397;
+  font-size: 12px;
+}
+
+.racehub-result-driver {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.racehub-team-line {
+  flex: 0 0 auto;
+  width: 3px;
+  height: 31px;
+  border-radius: 999px;
+}
+
+.racehub-result-driver strong,
+.racehub-result-driver small {
+  display: block;
+}
+
+.racehub-result-driver strong {
+  font-size: 13px;
+}
+
+.racehub-result-driver small {
+  overflow: hidden;
+  margin-top: 2px;
+  color: #697588;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.racehub-result-team,
+.racehub-result-time,
+.racehub-result-detail {
+  overflow: hidden;
+  color: #7c8898;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.racehub-result-time {
+  color: #e3e8ee;
+  font-weight: 780;
+}
+
+.racehub-empty-panel {
+  min-height: 260px;
+  display: grid;
+  place-items: center;
+  padding: 30px;
+  color: #687587;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* ============================================================
+   STARTING GRID
+============================================================ */
+
+.racehub-grid-layout {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px 58px;
+  padding: 22px max(22px,8vw) 32px;
+}
+
+.racehub-grid-layout::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 20px;
+  bottom: 28px;
+  width: 1px;
+  background: linear-gradient(transparent, rgba(0,245,212,.23), transparent);
+}
+
+.racehub-grid-slot {
+  position: relative;
+  min-height: 60px;
+  display: grid;
+  grid-template-columns: 36px 3px minmax(0,1fr);
+  align-items: center;
+  gap: 9px;
+  padding: 10px 13px;
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 12px;
+  background: rgba(255,255,255,.02);
+}
+
+.racehub-grid-slot.right {
+  transform: translateY(22px);
+}
+
+.racehub-grid-position {
+  color: #6f7c8f;
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.racehub-grid-color {
+  width: 3px;
+  height: 34px;
+  border-radius: 999px;
+}
+
+.racehub-grid-slot strong,
+.racehub-grid-slot small {
+  display: block;
+}
+
+.racehub-grid-slot strong {
+  font-size: 14px;
+}
+
+.racehub-grid-slot small {
+  margin-top: 3px;
+  color: #697588;
+  font-size: 8px;
+}
+
+/* ============================================================
+   LOADING / ERROR
+============================================================ */
+
+.racehub-loader,
+.racehub-inline-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #758296;
+  font-size: 10px;
+}
+
+.racehub-loader {
+  min-height: 60vh;
+}
+
+.racehub-inline-loading {
+  min-height: 38px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(255,255,255,.05);
+  border-radius: 10px;
+  background: rgba(255,255,255,.018);
+}
+
+.racehub-loader span,
+.racehub-inline-loading span {
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(0,245,212,.18);
+  border-top-color: #00f5d4;
+  border-radius: 50%;
+  animation: racehub-spin .7s linear infinite;
+}
+
+@keyframes racehub-spin {
+  to { transform: rotate(360deg); }
+}
+
+.racehub-error {
+  margin: 0 0 14px;
+  padding: 11px 13px;
+  border: 1px solid rgba(255,41,77,.25);
+  border-radius: 11px;
+  color: #ff7188;
+  background: rgba(255,41,77,.055);
+  font-size: 10px;
+}
+
+/* ============================================================
+   INTEGRATION WITH HOME / CURRENT RESULTS
+============================================================ */
+
+.race-card--interactive {
+  cursor: pointer;
+}
+
+.race-card--interactive:focus-visible {
+  outline: 2px solid rgba(0,245,212,.7);
+  outline-offset: 3px;
+}
+
+.featured-hub-trigger {
+  appearance: none;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.featured-hub-trigger:hover {
+  color: #00f5d4;
+}
+
+.current-result-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.current-result-hub {
+  padding: 7px 10px;
+  border: 1px solid rgba(0,245,212,.18);
+  border-radius: 9px;
+  color: #00f5d4;
+  background: rgba(0,245,212,.045);
+  font: inherit;
+  font-size: 8px;
+  font-weight: 900;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease;
+}
+
+.current-result-hub:hover {
+  border-color: rgba(0,245,212,.42);
+  background: rgba(0,245,212,.08);
+}
+
+/* ============================================================
+   PERFORMANCE
+============================================================ */
+
+.racehub-card,
+.racehub-hero,
+.racehub-result-row {
+  backface-visibility: hidden;
+}
+
+.racehub-track-image {
+  will-change: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .racehub-loader span,
+  .racehub-inline-loading span {
+    animation: none;
+  }
+
+  .racehub-tabs button,
+  .racehub-back,
+  .racehub-schedule-row,
+  .current-result-hub {
+    transition: none;
+  }
+}
+
+/* ============================================================
+   RESPONSIVE
+============================================================ */
+
+@media (max-width: 1100px) {
+  .racehub-hero {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "copy"
+      "track"
+      "stats";
+  }
+
+  .racehub-track-stage {
+    min-height: 240px;
+  }
+
+  .racehub-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .racehub-podium-card,
+  .racehub-weekend-card,
+  .racehub-facts-card,
+  .racehub-retirements-card {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .racehub-page {
+    padding-top: 18px;
+  }
+
+  .racehub-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .racehub-toolbar-actions {
+    align-items: stretch;
+  }
+
+  .racehub-race-select {
+    flex: 1;
+  }
+
+  .racehub-race-select select {
+    width: 100%;
+  }
+
+  .racehub-hero {
+    padding: 20px;
+    border-radius: 20px;
+  }
+
+  .racehub-hero h2 {
+    font-size: clamp(36px,12vw,58px);
+    letter-spacing: -2px;
+  }
+
+  .racehub-track-stage {
+    min-height: 190px;
+  }
+
+  .racehub-track-image,
+  .racehub-track-fallback {
+    height: 175px;
+  }
+
+  .racehub-hero-statline {
+    grid-template-columns: repeat(2,1fr);
+  }
+
+  .racehub-tabs-shell {
+    top: 62px;
+  }
+
+  .racehub-podium {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .racehub-podium-place,
+  .racehub-podium-place.p1 {
+    min-height: 118px;
+  }
+
+  .racehub-result-head {
+    display: none;
+  }
+
+  .racehub-result-row,
+  .racehub-result-row.is-qualifying {
+    grid-template-columns: 42px minmax(0,1fr) auto;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .racehub-result-team {
+    grid-column: 2;
+    padding-left: 12px;
+  }
+
+  .racehub-result-time {
+    grid-column: 3;
+    grid-row: 1;
+    text-align: right;
+  }
+
+  .racehub-result-detail {
+    grid-column: 3;
+    grid-row: 2;
+    text-align: right;
+  }
+
+  .racehub-result-row.is-qualifying .racehub-result-time:nth-of-type(n+2) {
+    display: none;
+  }
+
+  .racehub-grid-layout {
+    gap: 7px 22px;
+    padding: 18px 8px 28px;
+  }
+
+  .racehub-grid-slot {
+    grid-template-columns: 28px 3px minmax(0,1fr);
+    padding: 9px;
+  }
+
+  .racehub-grid-slot strong {
+    font-size: 12px;
+  }
+
+  .racehub-card-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .racehub-card-heading small {
+    text-align: left;
+  }
+}
+
+/* ============================================================
+   RACE HUB V2 · LEGIBILIDAD + DENSIDAD DE INFORMACIÓN
+   Mantiene la estética original, pero evita que las tarjetas
+   grandes se sientan vacías y mejora la lectura en escritorio.
+============================================================ */
+
+.racehub-kicker {
+  font-size: 11px;
+}
+
+.racehub-back {
+  height: 48px;
+  padding: 0 17px;
+  font-size: 12px;
+}
+
+.racehub-race-select {
+  gap: 7px;
+}
+
+.racehub-race-select > span {
+  font-size: 10px;
+  letter-spacing: 1.15px;
+}
+
+.racehub-race-select select {
+  width: min(400px, 44vw);
+  height: 48px;
+  padding-left: 15px;
+  font-size: 14px;
+}
+
+/* HERO */
+
+.racehub-hero {
+  gap: 24px 38px;
+  padding: 32px;
+}
+
+.racehub-hero-badges span {
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: 10px;
+}
+
+.racehub-country {
+  gap: 9px;
+  font-size: 13px;
+}
+
+.racehub-country .country-flag {
+  width: 24px;
+  height: 18px;
+}
+
+.racehub-hero-copy > p {
+  font-size: 17px;
+}
+
+.racehub-hero-meta span {
+  padding: 9px 12px;
+  font-size: 12px;
+}
+
+.racehub-hero-statline > div {
+  min-height: 72px;
+  padding: 14px 16px;
+}
+
+.racehub-hero-statline span {
+  font-size: 10px;
+}
+
+.racehub-hero-statline strong {
+  margin-top: 7px;
+  font-size: 18px;
+}
+
+/* TABS */
+
+.racehub-tabs-shell {
+  padding: 8px;
+}
+
+.racehub-tabs button {
+  min-height: 42px;
+  padding: 0 16px;
+  font-size: 11px;
+}
+
+/* CARDS */
+
+.racehub-overview-grid {
+  gap: 16px;
+}
+
+.racehub-card-heading {
+  min-height: 86px;
+  padding: 18px 20px;
+}
+
+.racehub-card-heading span {
+  font-size: 10px;
+  letter-spacing: 1.15px;
+}
+
+.racehub-card-heading h3 {
+  margin-top: 6px;
+  font-size: 25px;
+}
+
+.racehub-card-heading small {
+  max-width: 420px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.racehub-podium-card,
+.racehub-weekend-card,
+.racehub-facts-card,
+.racehub-retirements-card {
+  min-height: 0;
+}
+
+/* PODIO */
+
+.racehub-podium {
+  min-height: 260px;
+  gap: 11px;
+  padding: 24px 20px 20px;
+}
+
+.racehub-podium-place {
+  min-height: 172px;
+  padding: 18px;
+}
+
+.racehub-podium-place.p1 {
+  min-height: 210px;
+}
+
+.racehub-podium-rank {
+  font-size: 11px;
+}
+
+.racehub-podium-place > strong {
+  margin-top: 11px;
+  font-size: clamp(32px, 3.3vw, 48px);
+}
+
+.racehub-podium-place p {
+  margin-top: 10px;
+  font-size: 14px;
+}
+
+.racehub-podium-place small {
+  margin-top: 5px;
+  font-size: 11px;
+}
+
+.racehub-podium-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+  padding: 0 20px 20px;
+}
+
+.racehub-podium-summary > div {
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid rgba(255,255,255,.055);
+  border-radius: 12px;
+  background: rgba(255,255,255,.02);
+}
+
+.racehub-podium-summary span,
+.racehub-podium-summary strong {
+  display: block;
+}
+
+.racehub-podium-summary span {
+  color: #667386;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.racehub-podium-summary strong {
+  overflow: hidden;
+  margin-top: 6px;
+  color: #edf2f7;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* PREVIEW */
+
+.racehub-preview-copy {
+  min-height: 285px;
+  padding: 30px;
+}
+
+.racehub-preview-copy > strong {
+  font-size: 28px;
+}
+
+.racehub-preview-copy > p {
+  font-size: 14px;
+}
+
+.racehub-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+  margin-top: 22px;
+}
+
+.racehub-preview-grid > div {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(255,255,255,.055);
+  border-radius: 12px;
+  background: rgba(255,255,255,.02);
+}
+
+.racehub-preview-grid span,
+.racehub-preview-grid strong,
+.racehub-preview-grid small {
+  display: block;
+}
+
+.racehub-preview-grid span {
+  color: #667386;
+  font-size: 9px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.racehub-preview-grid strong {
+  margin-top: 7px;
+  font-size: 16px;
+}
+
+.racehub-preview-grid small {
+  overflow: hidden;
+  margin-top: 5px;
+  color: #778496;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* PROGRAMA */
+
+.racehub-schedule-list {
+  padding: 10px;
+}
+
+.racehub-schedule-row {
+  min-height: 58px;
+  grid-template-columns: 54px minmax(0,1fr) auto;
+  gap: 12px;
+  padding: 10px 11px;
+}
+
+.racehub-session-code {
+  height: 40px;
+  font-size: 10px;
+}
+
+.racehub-session-copy strong {
+  font-size: 14px;
+}
+
+.racehub-session-copy small {
+  margin-top: 4px;
+  font-size: 10px;
+}
+
+.racehub-session-status {
+  padding: 6px 9px;
+  font-size: 9px;
+}
+
+/* DATOS CLAVE */
+
+.racehub-facts-grid {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 16px;
+}
+
+.racehub-facts-grid > div {
+  min-height: 94px;
+  padding: 14px;
+  border-radius: 13px;
+}
+
+.racehub-facts-grid span,
+.racehub-facts-grid small {
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.racehub-facts-grid strong {
+  margin-top: 7px;
+  font-size: 21px;
+}
+
+.racehub-facts-grid small {
+  margin-top: 5px;
+}
+
+/* ABANDONOS */
+
+.racehub-retirement-list {
+  gap: 9px;
+  padding: 16px;
+}
+
+.racehub-retirement-list > div {
+  min-height: 72px;
+  padding: 11px 13px;
+  border-radius: 12px;
+}
+
+.racehub-retirement-driver {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.racehub-retirement-color {
+  flex: 0 0 auto;
+  width: 3px;
+  height: 39px;
+  border-radius: 999px;
+}
+
+.racehub-retirement-driver > div {
+  min-width: 0;
+}
+
+.racehub-retirement-driver strong,
+.racehub-retirement-driver b,
+.racehub-retirement-driver small {
+  display: block;
+}
+
+.racehub-retirement-driver strong {
+  color: #ff5b72;
+  font-size: 14px;
+}
+
+.racehub-retirement-driver b {
+  overflow: hidden;
+  margin-top: 2px;
+  color: #e7ecf2;
+  font-size: 11px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.racehub-retirement-driver small {
+  overflow: hidden;
+  margin-top: 2px;
+  color: #697588;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.racehub-retirement-status {
+  flex: 0 0 auto;
+  max-width: 46%;
+  color: #8a96a6 !important;
+  font-size: 10px !important;
+  line-height: 1.3;
+  text-align: right;
+}
+
+.racehub-clean-race {
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+  padding: 28px 20px;
+}
+
+.racehub-clean-race strong {
+  color: #e6ebf1;
+  font-size: 17px;
+}
+
+.racehub-clean-race span {
+  color: #718094;
+  font-size: 12px;
+}
+
+/* TABLAS DE RESULTADOS */
+
+.racehub-session-card,
+.racehub-grid-card {
+  min-height: 0;
+}
+
+.racehub-result-head,
+.racehub-result-row {
+  grid-template-columns:
+    64px
+    minmax(190px,1.25fr)
+    minmax(145px,.8fr)
+    minmax(135px,.7fr)
+    minmax(110px,.65fr);
+  gap: 12px;
+}
+
+.racehub-result-head.is-qualifying,
+.racehub-result-row.is-qualifying {
+  grid-template-columns:
+    64px
+    minmax(190px,1.2fr)
+    minmax(145px,.8fr)
+    112px 112px 112px;
+}
+
+.racehub-result-head {
+  padding: 12px 20px;
+  font-size: 9px;
+}
+
+.racehub-result-row {
+  min-height: 68px;
+  padding: 10px 20px;
+  contain-intrinsic-size: auto 68px;
+}
+
+.racehub-result-position {
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.racehub-result-driver {
+  gap: 11px;
+}
+
+.racehub-team-line {
+  height: 36px;
+}
+
+.racehub-result-driver strong {
+  font-size: 16px;
+}
+
+.racehub-result-driver small {
+  margin-top: 4px;
+  font-size: 10px;
+}
+
+.racehub-result-team,
+.racehub-result-time,
+.racehub-result-detail {
+  font-size: 12px;
+}
+
+.racehub-result-time {
+  font-size: 13px;
+}
+
+.racehub-empty-panel {
+  min-height: 300px;
+  font-size: 14px;
+}
+
+/* PARRILLA */
+
+.racehub-grid-slot {
+  min-height: 68px;
+}
+
+.racehub-grid-position {
+  font-size: 17px;
+}
+
+.racehub-grid-color {
+  height: 39px;
+}
+
+.racehub-grid-slot strong {
+  font-size: 16px;
+}
+
+.racehub-grid-slot small {
+  font-size: 10px;
+}
+
+/* FEEDBACK */
+
+.racehub-loader,
+.racehub-inline-loading {
+  font-size: 12px;
+}
+
+.racehub-error {
+  padding: 13px 15px;
+  font-size: 12px;
+}
+
+.current-result-hub {
+  font-size: 10px;
+}
+
+/* ============================================================
+   RESPONSIVE V2
+============================================================ */
+
+@media (max-width: 1100px) {
+  .racehub-facts-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .racehub-podium-summary,
+  .racehub-preview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .racehub-podium-summary strong {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 760px) {
+  .racehub-race-select > span {
+    font-size: 9px;
+  }
+
+  .racehub-race-select select {
+    width: 100%;
+    font-size: 13px;
+  }
+
+  .racehub-hero {
+    padding: 22px;
+  }
+
+  .racehub-hero-copy > p {
+    font-size: 15px;
+  }
+
+  .racehub-hero-statline span {
+    font-size: 9px;
+  }
+
+  .racehub-hero-statline strong {
+    font-size: 16px;
+  }
+
+  .racehub-tabs button {
+    min-height: 40px;
+    padding: 0 13px;
+    font-size: 10px;
+  }
+
+  .racehub-card-heading {
+    min-height: 78px;
+    padding: 16px;
+  }
+
+  .racehub-card-heading h3 {
+    font-size: 22px;
+  }
+
+  .racehub-card-heading small {
+    font-size: 10px;
+  }
+
+  .racehub-podium {
+    min-height: 0;
+  }
+
+  .racehub-podium-place,
+  .racehub-podium-place.p1 {
+    min-height: 128px;
+  }
+
+  .racehub-podium-place p {
+    font-size: 13px;
+  }
+
+  .racehub-podium-place small {
+    font-size: 10px;
+  }
+
+  .racehub-facts-grid {
+    grid-template-columns: 1fr 1fr;
+    padding: 12px;
+  }
+
+  .racehub-facts-grid strong {
+    font-size: 18px;
+  }
+
+  .racehub-retirement-list {
+    grid-template-columns: 1fr;
+    padding: 12px;
+  }
+
+  .racehub-schedule-row {
+    grid-template-columns: 48px minmax(0,1fr);
+  }
+
+  .racehub-session-status {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .racehub-result-row,
+  .racehub-result-row.is-qualifying {
+    min-height: 72px;
+  }
+
+  .racehub-result-driver strong {
+    font-size: 14px;
+  }
+
+  .racehub-result-team,
+  .racehub-result-time,
+  .racehub-result-detail {
+    font-size: 11px;
+  }
+}
+
+
+
+/* ============================================================
+   RACE HUB V3 · PODIO SIN DATOS DUPLICADOS
+============================================================ */
+
+/*
+  El podio ahora concentra exclusivamente la información de los
+  tres primeros: resultado, diferencia/tiempo y posición de salida.
+  Las antiguas tarjetas inferiores del podio ya no se renderizan.
+*/
+
+.racehub-podium--detailed {
+  min-height: 325px;
+  align-items: end;
+  padding-bottom: 22px;
+}
+
+.racehub-podium--detailed .racehub-podium-place {
+  min-height: 235px;
+  padding: 20px 20px 18px;
+}
+
+.racehub-podium--detailed .racehub-podium-place.p1 {
+  min-height: 275px;
+}
+
+.racehub-podium-race-info {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 17px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255,255,255,.065);
+}
+
+.racehub-podium-race-info > div {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(255,255,255,.045);
+  border-radius: 9px;
+  background: rgba(255,255,255,.018);
+}
+
+.racehub-podium-race-info span,
+.racehub-podium-race-info strong {
+  display: block;
+}
+
+.racehub-podium-race-info span {
+  color: #8793a3;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: .35px;
+  text-transform: uppercase;
+}
+
+.racehub-podium-race-info strong {
+  overflow: hidden;
+  margin-top: 5px;
+  color: #f2f5f8;
+  font-size: 14px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+/* ============================================================
+   RACE HUB V3 · DATOS CLAVE
+============================================================ */
+
+/*
+  Datos clave deja de repetir:
+  - ganador
+  - tiempo ganador
+  - diferencias del podio
+
+  y pasa a resumir estadísticas distintas de la carrera.
+*/
+
+.racehub-facts-grid > div {
+  min-height: 100px;
+}
+
+.racehub-facts-grid span {
+  color: #8b96a6;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.racehub-facts-grid strong {
+  font-size: 22px;
+  line-height: 1.12;
+}
+
+.racehub-facts-grid small {
+  color: #8a96a6;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+
+/* ============================================================
+   RESPONSIVE V3
+============================================================ */
+
+@media (max-width: 900px) {
+  .racehub-podium--detailed {
+    min-height: 0;
+  }
+
+  .racehub-podium--detailed .racehub-podium-place,
+  .racehub-podium--detailed .racehub-podium-place.p1 {
+    min-height: 220px;
+  }
+
+  .racehub-podium-race-info {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .racehub-podium--detailed .racehub-podium-place,
+  .racehub-podium--detailed .racehub-podium-place.p1 {
+    min-height: 0;
+  }
+
+  .racehub-podium-race-info {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 14px;
+    padding-top: 12px;
+  }
+
+  .racehub-podium-race-info span {
+    font-size: 10px;
+  }
+
+  .racehub-podium-race-info strong {
+    font-size: 13px;
+  }
+}
