@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./Telemetry.css";
+import LapReplay from "./LapReplay";
 
 const OPENF1 = "https://api.openf1.org/v1";
 const YEAR = 2026;
@@ -3149,6 +3150,15 @@ export default function Telemetry() {
                     accent={driverColor(driverBInfo, 1)}
                   />
                 </div>
+
+                <LapReplay
+                  meeting={selectedMeeting}
+                  comparison={comparison}
+                  driverA={driverAInfo}
+                  driverB={driverBInfo}
+                  styleA={driverAChartStyle}
+                  styleB={driverBChartStyle}
+                />
 
                 <LineChart
                   title={`Delta · ${driverBInfo?.name_acronym || "B"} vs ${driverAInfo?.name_acronym || "A"}`}
