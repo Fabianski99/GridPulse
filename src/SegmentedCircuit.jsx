@@ -9,6 +9,10 @@ import {
   CIRCUIT_VISUAL_OVERRIDES,
 } from "./CircuitVisualOverrides";
 
+import {
+  CIRCUIT_CORNER_PROGRESS_OVERRIDES,
+} from "./CircuitCornerOverrides";
+
 import "./CircuitAnnotations.css";
 
 const SECTORS = [
@@ -960,6 +964,49 @@ export default function SegmentedCircuit({
 
 
         /*
+          Algunos circuitos necesitan una referencia manual porque
+          la numeración oficial no equivale simplemente a los picos
+          geométricos más fuertes. Monza es el caso principal:
+          T1/T2, T4/T5 y T8/T9/T10 son complejos de chicanes.
+        */
+        const manualProgresses =
+          CIRCUIT_CORNER_PROGRESS_OVERRIDES?.[
+            circuitId
+          ] || null;
+
+        const cornerSource =
+          manualProgresses?.length
+            ? manualProgresses.map(
+                (
+                  progress,
+                  index
+                ) => ({
+                  index:
+                    Math.round(
+                      (
+                        progress /
+                        100
+                      ) *
+                        sampleCount
+                    ) %
+                    sampleCount,
+
+                  progress:
+                    progress /
+                    100,
+
+                  number:
+                    index +
+                    1,
+                })
+              )
+            : selected.slice(
+                0,
+                desired
+              );
+
+
+        /*
           Antes se pedían puntos
           nuevos al SVG para cada
           marcador.
@@ -978,11 +1025,7 @@ export default function SegmentedCircuit({
 
 
         const corners =
-          selected
-            .slice(
-              0,
-              desired
-            )
+          cornerSource
             .map(
               (
                 item,
@@ -1115,6 +1158,7 @@ export default function SegmentedCircuit({
 
                 return {
                   number:
+                    item.number ||
                     index + 1,
 
                   progress:
