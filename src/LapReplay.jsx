@@ -1458,44 +1458,43 @@ function cornerEventPoints(
 ) {
   if (!corner) return [];
 
-  if (eventType === "apex") {
-    return [
-      {
-        key: "A",
-        code: codeA,
-        color: colorA,
-        progress: corner.apexProgress,
-        laneOffset: 7,
-      },
-      {
-        key: "B",
-        code: codeB,
-        color: colorB,
-        progress: corner.apexProgress,
-        laneOffset: -7,
-      },
-    ];
-  }
-
-  const fieldA = eventType === "brake" ? corner.brakeA : corner.throttleA;
-  const fieldB = eventType === "brake" ? corner.brakeB : corner.throttleB;
-
-  return [
+  const base = [
     {
       key: "A",
       code: codeA,
       color: colorA,
-      progress: fieldA,
-      laneOffset: 6,
+      laneOffset: 15,
+      labelOffsetY: -30,
     },
     {
       key: "B",
       code: codeB,
       color: colorB,
-      progress: fieldB,
-      laneOffset: -6,
+      laneOffset: -15,
+      labelOffsetY: 30,
     },
-  ].filter((item) => Number.isFinite(item.progress));
+  ];
+
+  if (eventType === "apex") {
+    return base.map((item) => ({
+      ...item,
+      progress: corner.apexProgress,
+      shape: "diamond",
+      eventLabel: "Punto lento",
+    }));
+  }
+
+  const fieldA = eventType === "brake" ? corner.brakeA : corner.throttleA;
+  const fieldB = eventType === "brake" ? corner.brakeB : corner.throttleB;
+
+  return base
+    .map((item) => ({
+      ...item,
+      progress: item.key === "A" ? fieldA : fieldB,
+      shape: eventType === "brake" ? "square" : "chevron",
+      eventLabel: eventType === "brake" ? "Frenada" : "Gas 100%",
+    }))
+    .filter((item) => Number.isFinite(item.progress));
 }
 
 export default function LapReplay({
@@ -2327,22 +2326,74 @@ export default function LapReplay({
                   return (
                     <g
                       key={`corner-event-${cornerEvent}-${eventPoint.key}`}
-                      className="lap-replay-corner-event-marker"
+                      className={`lap-replay-corner-event-marker is-${eventPoint.shape}`}
                       style={{ "--event-color": eventPoint.color }}
                       transform={`translate(${point.x} ${point.y})`}
                     >
-                      <circle className="lap-replay-corner-event-pulse" r="14" />
-                      <circle className="lap-replay-corner-event-dot" r="7" />
-                      <text x="0" y="-18" textAnchor="middle">
-                        {eventPoint.code}
-                      </text>
+                      <circle className="lap-replay-corner-event-pulse" r="18" />
+
+                      {eventPoint.shape === "square" && (
+                        <rect
+                          className="lap-replay-corner-event-shape"
+                          x="-9"
+                          y="-9"
+                          width="18"
+                          height="18"
+                          rx="4"
+                        />
+                      )}
+
+                      {eventPoint.shape === "diamond" && (
+                        <rect
+                          className="lap-replay-corner-event-shape"
+                          x="-8"
+                          y="-8"
+                          width="16"
+                          height="16"
+                          rx="3"
+                          transform="rotate(45)"
+                        />
+                      )}
+
+                      {eventPoint.shape === "chevron" && (
+                        <path
+                          className="lap-replay-corner-event-shape"
+                          d="M -10 -8 L 0 0 L -10 8 M 0 -8 L 10 0 L 0 8"
+                        />
+                      )}
+
+                      <line
+                        className="lap-replay-corner-event-connector"
+                        x1="0"
+                        y1={eventPoint.labelOffsetY > 0 ? 9 : -9}
+                        x2="0"
+                        y2={eventPoint.labelOffsetY > 0 ? 18 : -18}
+                      />
+
+                      <g
+                        className="lap-replay-corner-event-label"
+                        transform={`translate(0 ${eventPoint.labelOffsetY})`}
+                      >
+                        <rect x="-28" y="-12" width="56" height="24" rx="12" />
+                        <text
+                          x="0"
+                          y="1"
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                        >
+                          {eventPoint.code}
+                        </text>
+                      </g>
                     </g>
                   );
                 })}
               </g>
             )}
 
-            <g ref={markerARef} className="lap-replay-marker lap-replay-marker--a">
+            <g
+              ref={markerARef}
+              className={`lap-replay-marker lap-replay-marker--a ${cornerExplorerOpen ? "is-analysis-hidden" : ""}`}
+            >
               <circle className="lap-replay-marker-glow" r="16" />
               <circle className="lap-replay-marker-dot" r="9" />
               <g className="lap-replay-marker-label" transform="translate(0 -34)">
@@ -2353,7 +2404,10 @@ export default function LapReplay({
               </g>
             </g>
 
-            <g ref={markerBRef} className="lap-replay-marker lap-replay-marker--b">
+            <g
+              ref={markerBRef}
+              className={`lap-replay-marker lap-replay-marker--b ${cornerExplorerOpen ? "is-analysis-hidden" : ""}`}
+            >
               <circle className="lap-replay-marker-glow" r="16" />
               <circle className="lap-replay-marker-dot" r="9" />
               <g className="lap-replay-marker-label" transform="translate(0 34)">
@@ -2372,13 +2426,26 @@ export default function LapReplay({
           </div>
 
           {cornerExplorerOpen && (
-            <div className="lap-replay-corner-legend">
+            <>
+              <div className="lap-replay-event-mode">
+                <span>Analizando</span>
+                <strong>
+                  {cornerEvent === "brake"
+                    ? "Frenada"
+                    : cornerEvent === "apex"
+                      ? "Punto lento"
+                      : "Gas 100%"}
+                </strong>
+              </div>
+
+              <div className="lap-replay-corner-legend">
               <span><i style={{ background: colorA }} />{codeA} gana tiempo</span>
               <span><i style={{ background: colorB }} />{codeB} gana tiempo</span>
               <span><i className="neutral" />Diferencia mínima</span>
               <span className="straight-key"><b>R#</b> Recta detectada</span>
               <small>Los círculos numerados son curvas reales del circuito; las etiquetas R# identifican rectas de alta velocidad.</small>
-            </div>
+              </div>
+            </>
           )}
         </div>
 
