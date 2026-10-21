@@ -765,6 +765,445 @@ function buildLapAnalysis({
   };
 }
 
+
+function seriesLapDistance(points) {
+  if (!points?.length) return 0;
+
+  const first = number(points[0]?.distance, 0);
+  const last = number(points[points.length - 1]?.distance, 0);
+
+  return Math.max(0, last - first);
+}
+
+function progressGapMeters(progressA, progressB, lapDistance) {
+  if (
+    !Number.isFinite(progressA) ||
+    !Number.isFinite(progressB) ||
+    !Number.isFinite(lapDistance) ||
+    lapDistance <= 0
+  ) {
+    return 0;
+  }
+
+  return (Math.abs(progressA - progressB) / 100) * lapDistance;
+}
+
+function firstProgressMatching(points, start, end, predicate) {
+  const rows = (points || [])
+    .filter(
+      (point) =>
+        Number.isFinite(point.progress) &&
+        point.progress >= start &&
+        point.progress <= end
+    )
+    .sort((a, b) => a.progress - b.progress);
+
+  const row = rows.find(predicate);
+  return row?.progress ?? null;
+}
+
+function findCornerApexProgress(seriesA, seriesB, start, end, center) {
+  const searchStart = Math.max(start, center - 1.7);
+  const searchEnd = Math.min(end, center + 1.9);
+
+  let bestProgress = clamp(center, searchStart, searchEnd);
+  let bestSpeed = Infinity;
+
+  for (let progress = searchStart; progress <= searchEnd; progress += 0.12) {
+    const speedA = valueAtProgress(seriesA, progress, "speed");
+    const speedB = valueAtProgress(seriesB, progress, "speed");
+
+    const valid = [speedA, speedB].filter(Number.isFinite);
+    if (!valid.length) continue;
+
+    const combined = average(valid);
+
+    if (combined < bestSpeed) {
+      bestSpeed = combined;
+      bestProgress = progress;
+    }
+  }
+
+  return clamp(bestProgress, start, end);
+}
+
+function compareCornerEvent(
+  type,
+  progressA,
+  progressB,
+  lapDistance,
+  codeA,
+  codeB
+) {
+  if (!Number.isFinite(progressA) || !Number.isFinite(progressB)) {
+    return {
+      winnerKey: null,
+      meters: 0,
+      text: "Sin datos suficientes para comparar",
+    };
+  }
+
+  const meters = progressGapMeters(progressA, progressB, lapDistance);
+
+  if (meters < 2) {
+    return {
+      winnerKey: null,
+      meters,
+      text:
+        type === "brake"
+          ? "Punto de frenada prácticamente idéntico"
+          : "Vuelta al 100% de gas prácticamente idéntica",
+    };
+  }
+
+  const winnerKey =
+    type === "brake"
+      ? progressA > progressB
+        ? "A"
+        : "B"
+      : progressA < progressB
+        ? "A"
+        : "B";
+
+  const winnerCode = winnerKey === "A" ? codeA : codeB;
+
+  return {
+    winnerKey,
+    meters,
+    text:
+      type === "brake"
+        ? `${winnerCode} frena ~${Math.round(meters)} m más tarde`
+        : `${winnerCode} vuelve al 100% ~${Math.round(meters)} m antes`,
+  };
+}
+
+function explainCorner(corner, codeA, codeB) {
+  if (!corner?.winnerKey || corner.timeGain < 0.003) {
+    return "Los dos pilotos pasan esta curva con una diferencia mínima; aquí no se decide una parte importante de la vuelta.";
+  }
+
+  const winnerCode = corner.winnerKey === "A" ? codeA : codeB;
+  const winnerEntry =
+    corner.winnerKey === "A" ? corner.entrySpeedA : corner.entrySpeedB;
+  const rivalEntry =
+    corner.winnerKey === "A" ? corner.entrySpeedB : corner.entrySpeedA;
+  const winnerApex =
+    corner.winnerKey === "A" ? corner.apexSpeedA : corner.apexSpeedB;
+  const rivalApex =
+    corner.winnerKey === "A" ? corner.apexSpeedB : corner.apexSpeedA;
+  const winnerExit =
+    corner.winnerKey === "A" ? corner.exitSpeedA : corner.exitSpeedB;
+  const rivalExit =
+    corner.winnerKey === "A" ? corner.exitSpeedB : corner.exitSpeedA;
+
+  const entryDelta = winnerEntry - rivalEntry;
+  const apexDelta = winnerApex - rivalApex;
+  const exitDelta = winnerExit - rivalExit;
+
+  if (
+    entryDelta <= -2 &&
+    exitDelta >= 2 &&
+    corner.throttleComparison.winnerKey === corner.winnerKey
+  ) {
+    return `${winnerCode} sacrifica algo de velocidad en la entrada, pero vuelve al gas antes y sale +${Math.round(
+      exitDelta
+    )} km/h más rápido. La ganancia está en la tracción.`;
+  }
+
+  if (
+    corner.brakeComparison.winnerKey === corner.winnerKey &&
+    corner.brakeComparison.meters >= 3 &&
+    apexDelta >= -2
+  ) {
+    return `${winnerCode} construye la diferencia en la frenada: retrasa el punto ~${Math.round(
+      corner.brakeComparison.meters
+    )} m sin perder demasiado en el punto lento.`;
+  }
+
+  if (
+    corner.throttleComparison.winnerKey === corner.winnerKey &&
+    corner.throttleComparison.meters >= 3 &&
+    exitDelta >= 1.5
+  ) {
+    return `${winnerCode} gana sobre todo en la salida: vuelve al 100% ~${Math.round(
+      corner.throttleComparison.meters
+    )} m antes y sale +${Math.round(exitDelta)} km/h más rápido.`;
+  }
+
+  if (apexDelta >= 2) {
+    return `${winnerCode} mantiene +${Math.round(
+      apexDelta
+    )} km/h en el punto de mínima velocidad y arrastra esa ventaja hacia la salida.`;
+  }
+
+  if (exitDelta >= 2) {
+    return `${winnerCode} consigue una salida más fuerte, con +${Math.round(
+      exitDelta
+    )} km/h al abandonar la curva.`;
+  }
+
+  if (entryDelta >= 2) {
+    return `${winnerCode} llega a la curva +${Math.round(
+      entryDelta
+    )} km/h más rápido y conserva suficiente velocidad durante el giro.`;
+  }
+
+  return `${winnerCode} suma ${corner.timeGain.toFixed(
+    3
+  )} s mediante una ejecución más consistente entre entrada, punto lento y salida.`;
+}
+
+function buildCornerExplorer({
+  circuitId,
+  geometry,
+  refs,
+  replayDelta,
+  seriesA,
+  seriesB,
+  lapA,
+  lapB,
+  codeA,
+  codeB,
+  colorA,
+  colorB,
+}) {
+  if (!geometry?.total || !seriesA.length || !seriesB.length) return null;
+
+  const mappedCorners = buildCornerProgress(circuitId, geometry, refs)
+    .filter((corner) => Number.isFinite(corner.progress))
+    .sort((a, b) => a.progress - b.progress);
+
+  if (!mappedCorners.length) return null;
+
+  const lapDistance = average([
+    seriesLapDistance(seriesA),
+    seriesLapDistance(seriesB),
+  ]);
+
+  const durationA = number(lapA?.lap_duration, Infinity);
+  const durationB = number(lapB?.lap_duration, Infinity);
+  const lapWinnerKey = durationA <= durationB ? "A" : "B";
+
+  const corners = mappedCorners.map((corner, index) => {
+    const previousProgress =
+      index > 0
+        ? mappedCorners[index - 1].progress
+        : mappedCorners[mappedCorners.length - 1].progress - 100;
+
+    const nextProgress =
+      index < mappedCorners.length - 1
+        ? mappedCorners[index + 1].progress
+        : mappedCorners[0].progress + 100;
+
+    const leftGap = Math.max(0.8, corner.progress - previousProgress);
+    const rightGap = Math.max(0.8, nextProgress - corner.progress);
+
+    const start = clamp(
+      corner.progress - clamp(leftGap * 0.42, 0.8, 3.0),
+      0,
+      100
+    );
+    const end = clamp(
+      corner.progress + clamp(rightGap * 0.42, 0.9, 3.4),
+      0,
+      100
+    );
+
+    const apexProgress = findCornerApexProgress(
+      seriesA,
+      seriesB,
+      start,
+      end,
+      corner.progress
+    );
+
+    const entryProgress = clamp(
+      apexProgress - clamp((apexProgress - start) * 0.72, 0.55, 1.35),
+      start,
+      apexProgress
+    );
+
+    const exitProgress = clamp(
+      apexProgress + clamp((end - apexProgress) * 0.72, 0.65, 1.5),
+      apexProgress,
+      end
+    );
+
+    const statsA = rangeStats(seriesA, start, end);
+    const statsB = rangeStats(seriesB, start, end);
+    const type = classifySegment(start, end, statsA, statsB, geometry, refs);
+
+    const deltaStart = deltaAtProgress(replayDelta, start);
+    const deltaEnd = deltaAtProgress(replayDelta, end);
+    const gainA = deltaEnd - deltaStart;
+    const timeGain = Math.abs(gainA);
+
+    const winnerKey = timeGain < 0.003 ? null : gainA > 0 ? "A" : "B";
+    const winnerCode =
+      winnerKey === "A" ? codeA : winnerKey === "B" ? codeB : "Parejos";
+    const color =
+      winnerKey === "A"
+        ? colorA
+        : winnerKey === "B"
+          ? colorB
+          : "#7f8b9c";
+
+    const brakeA = firstProgressMatching(
+      seriesA,
+      start,
+      Math.min(end, apexProgress + 0.25),
+      (point) => number(point.brake) >= 25
+    );
+    const brakeB = firstProgressMatching(
+      seriesB,
+      start,
+      Math.min(end, apexProgress + 0.25),
+      (point) => number(point.brake) >= 25
+    );
+
+    const throttleA = firstProgressMatching(
+      seriesA,
+      apexProgress,
+      end,
+      (point) => number(point.throttle) >= 92 && number(point.brake) < 10
+    );
+    const throttleB = firstProgressMatching(
+      seriesB,
+      apexProgress,
+      end,
+      (point) => number(point.throttle) >= 92 && number(point.brake) < 10
+    );
+
+    const brakeComparison = compareCornerEvent(
+      "brake",
+      brakeA,
+      brakeB,
+      lapDistance,
+      codeA,
+      codeB
+    );
+
+    const throttleComparison = compareCornerEvent(
+      "throttle",
+      throttleA,
+      throttleB,
+      lapDistance,
+      codeA,
+      codeB
+    );
+
+    const analyzed = {
+      id: `${corner.number}${corner.letter || ""}`,
+      number: corner.number,
+      letter: corner.letter || "",
+      progress: corner.progress,
+      start,
+      end,
+      apexProgress,
+      entryProgress,
+      exitProgress,
+      marker: pointAtProgress(corner.progress, geometry, refs, 0),
+      path: buildZonePath(start, end, geometry, refs),
+      type,
+      gainA,
+      timeGain,
+      winnerKey,
+      winnerCode,
+      color,
+      entrySpeedA: valueAtProgress(seriesA, entryProgress, "speed") ?? 0,
+      entrySpeedB: valueAtProgress(seriesB, entryProgress, "speed") ?? 0,
+      apexSpeedA: valueAtProgress(seriesA, apexProgress, "speed") ?? 0,
+      apexSpeedB: valueAtProgress(seriesB, apexProgress, "speed") ?? 0,
+      exitSpeedA: valueAtProgress(seriesA, exitProgress, "speed") ?? 0,
+      exitSpeedB: valueAtProgress(seriesB, exitProgress, "speed") ?? 0,
+      brakeA,
+      brakeB,
+      throttleA,
+      throttleB,
+      brakeComparison,
+      throttleComparison,
+    };
+
+    analyzed.explanation = explainCorner(analyzed, codeA, codeB);
+    return analyzed;
+  });
+
+  const numberedCorners = [...corners].sort((a, b) => {
+    if (a.number !== b.number) return a.number - b.number;
+    return a.letter.localeCompare(b.letter);
+  });
+
+  const decisiveCorners = corners
+    .filter(
+      (corner) =>
+        corner.winnerKey === lapWinnerKey &&
+        corner.timeGain >= 0.003
+    )
+    .sort((a, b) => b.timeGain - a.timeGain)
+    .slice(0, 5)
+    .map((corner, index) => ({
+      ...corner,
+      decisiveRank: index + 1,
+    }));
+
+  return {
+    corners: numberedCorners,
+    decisiveCorners,
+    lapDistance,
+    lapWinnerKey,
+  };
+}
+
+function cornerEventPoints(
+  corner,
+  eventType,
+  codeA,
+  codeB,
+  colorA,
+  colorB
+) {
+  if (!corner) return [];
+
+  if (eventType === "apex") {
+    return [
+      {
+        key: "A",
+        code: codeA,
+        color: colorA,
+        progress: corner.apexProgress,
+        laneOffset: 7,
+      },
+      {
+        key: "B",
+        code: codeB,
+        color: colorB,
+        progress: corner.apexProgress,
+        laneOffset: -7,
+      },
+    ];
+  }
+
+  const fieldA = eventType === "brake" ? corner.brakeA : corner.throttleA;
+  const fieldB = eventType === "brake" ? corner.brakeB : corner.throttleB;
+
+  return [
+    {
+      key: "A",
+      code: codeA,
+      color: colorA,
+      progress: fieldA,
+      laneOffset: 6,
+    },
+    {
+      key: "B",
+      code: codeB,
+      color: colorB,
+      progress: fieldB,
+      laneOffset: -6,
+    },
+  ].filter((item) => Number.isFinite(item.progress));
+}
+
 export default function LapReplay({
   meeting,
   comparison,
@@ -793,6 +1232,11 @@ export default function LapReplay({
   const [showTrails, setShowTrails] = useState(true);
   const [showKeyZones, setShowKeyZones] = useState(false);
   const [keyZoneCount, setKeyZoneCount] = useState(5);
+  const [cornerExplorerOpen, setCornerExplorerOpen] = useState(false);
+  const [selectedCornerId, setSelectedCornerId] = useState(null);
+  const [cornerEvent, setCornerEvent] = useState("brake");
+  const [cornerTouring, setCornerTouring] = useState(false);
+  const [cornerTourIndex, setCornerTourIndex] = useState(0);
   const [frame, setFrame] = useState({
     elapsed: 0,
     progressA: 0,
@@ -863,9 +1307,56 @@ export default function LapReplay({
     ]
   );
 
+  const cornerExplorer = useMemo(
+    () =>
+      buildCornerExplorer({
+        circuitId,
+        geometry,
+        refs: pathRefs,
+        replayDelta,
+        seriesA,
+        seriesB,
+        lapA: comparison?.lapA,
+        lapB: comparison?.lapB,
+        codeA,
+        codeB,
+        colorA,
+        colorB,
+      }),
+    [
+      circuitId,
+      geometry,
+      replayDelta,
+      seriesA,
+      seriesB,
+      comparison,
+      codeA,
+      codeB,
+      colorA,
+      colorB,
+    ]
+  );
+
+  const selectedCorner = useMemo(() => {
+    if (!cornerExplorer?.corners?.length) return null;
+
+    return (
+      cornerExplorer.corners.find(
+        (corner) => corner.id === selectedCornerId
+      ) ||
+      cornerExplorer.decisiveCorners?.[0] ||
+      cornerExplorer.corners[0]
+    );
+  }, [cornerExplorer, selectedCornerId]);
+
   useEffect(() => {
     setPlaying(false);
     setShowKeyZones(false);
+    setCornerExplorerOpen(false);
+    setSelectedCornerId(null);
+    setCornerEvent("brake");
+    setCornerTouring(false);
+    setCornerTourIndex(0);
     elapsedRef.current = 0;
     lastFrameRef.current = null;
     setFrame((current) => ({
@@ -991,6 +1482,36 @@ export default function LapReplay({
   }, [geometry, seriesA, seriesB, showTrails]);
 
   useEffect(() => {
+    if (
+      !cornerTouring ||
+      !cornerExplorerOpen ||
+      !cornerExplorer?.decisiveCorners?.length
+    ) {
+      return undefined;
+    }
+
+    const corners = cornerExplorer.decisiveCorners;
+    const current = corners[Math.min(cornerTourIndex, corners.length - 1)];
+
+    if (current) focusCorner(current);
+
+    const timer = window.setTimeout(() => {
+      if (cornerTourIndex >= corners.length - 1) {
+        setCornerTouring(false);
+      } else {
+        setCornerTourIndex((index) => index + 1);
+      }
+    }, 3200);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    cornerTouring,
+    cornerTourIndex,
+    cornerExplorerOpen,
+    cornerExplorer,
+  ]);
+
+  useEffect(() => {
     if (!playing) {
       lastFrameRef.current = null;
       return undefined;
@@ -1049,6 +1570,74 @@ export default function LapReplay({
     }
 
     setPlaying((current) => !current);
+  }
+
+  function focusCorner(corner) {
+    if (!corner) return;
+
+    setPlaying(false);
+    setSelectedCornerId(corner.id);
+
+    const focusSeries =
+      corner.winnerKey === "B"
+        ? seriesB
+        : corner.winnerKey === "A"
+          ? seriesA
+          : lapAnalysis?.winnerKey === "B"
+            ? seriesB
+            : seriesA;
+
+    const targetElapsed = interpolateByKey(
+      focusSeries,
+      "progress",
+      corner.apexProgress,
+      "replayElapsed"
+    );
+
+    if (Number.isFinite(targetElapsed)) {
+      seek(targetElapsed);
+    }
+  }
+
+  function toggleCornerExplorer() {
+    const next = !cornerExplorerOpen;
+
+    setCornerExplorerOpen(next);
+    setCornerTouring(false);
+    setCornerTourIndex(0);
+
+    if (next) {
+      setShowKeyZones(false);
+      const firstCorner =
+        cornerExplorer?.decisiveCorners?.[0] ||
+        cornerExplorer?.corners?.[0];
+
+      if (firstCorner) focusCorner(firstCorner);
+    }
+  }
+
+  function toggleKeyZones() {
+    const next = !showKeyZones;
+    setShowKeyZones(next);
+
+    if (next) {
+      setCornerExplorerOpen(false);
+      setCornerTouring(false);
+    }
+  }
+
+  function toggleCornerTour() {
+    if (cornerTouring) {
+      setCornerTouring(false);
+      return;
+    }
+
+    if (!cornerExplorer?.decisiveCorners?.length) return;
+
+    setShowKeyZones(false);
+    setCornerExplorerOpen(true);
+    setCornerTourIndex(0);
+    setCornerTouring(true);
   }
 
   if (!comparison) return null;
@@ -1152,8 +1741,32 @@ export default function LapReplay({
             <div className="lap-replay-map-actions">
               <button
                 type="button"
+                className={`lap-replay-corner-toggle ${cornerExplorerOpen ? "active" : ""}`}
+                onClick={toggleCornerExplorer}
+                disabled={!cornerExplorer?.corners?.length}
+              >
+                Explorar curvas
+              </button>
+
+              {cornerExplorerOpen && cornerExplorer?.decisiveCorners?.length > 0 && (
+                <button
+                  type="button"
+                  className={`lap-replay-corner-tour ${cornerTouring ? "active" : ""}`}
+                  onClick={toggleCornerTour}
+                >
+                  {cornerTouring
+                    ? `Recorriendo ${Math.min(
+                        cornerTourIndex + 1,
+                        cornerExplorer.decisiveCorners.length
+                      )}/${cornerExplorer.decisiveCorners.length}`
+                    : "Recorrer diferencias"}
+                </button>
+              )}
+
+              <button
+                type="button"
                 className={`lap-replay-key-zones-toggle ${showKeyZones ? "active" : ""}`}
-                onClick={() => setShowKeyZones((current) => !current)}
+                onClick={toggleKeyZones}
               >
                 ¿Dónde se ganó la vuelta?
               </button>
@@ -1223,6 +1836,72 @@ export default function LapReplay({
                 />
               ))}
             </g>
+
+            {cornerExplorerOpen && cornerExplorer?.corners?.length > 0 && (
+              <g className="lap-replay-corner-explorer-layer">
+                {cornerExplorer.corners.map((corner) => {
+                  const selected = selectedCorner?.id === corner.id;
+
+                  return (
+                    <g
+                      key={`corner-segment-${corner.id}`}
+                      className={`lap-replay-corner-segment-group ${
+                        selected ? "selected" : ""
+                      }`}
+                      style={{ "--corner-color": corner.color }}
+                    >
+                      {corner.path && (
+                        <>
+                          <path
+                            className="lap-replay-corner-segment"
+                            d={corner.path}
+                          />
+                          <path
+                            className="lap-replay-corner-hit"
+                            d={corner.path}
+                            onClick={() => {
+                              setCornerTouring(false);
+                              focusCorner(corner);
+                            }}
+                          />
+                        </>
+                      )}
+
+                      {corner.marker && (
+                        <g
+                          className="lap-replay-corner-node"
+                          transform={`translate(${corner.marker.x} ${corner.marker.y})`}
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Analizar curva ${corner.number}${corner.letter || ""}`}
+                          onClick={() => {
+                            setCornerTouring(false);
+                            focusCorner(corner);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setCornerTouring(false);
+                              focusCorner(corner);
+                            }
+                          }}
+                        >
+                          <circle r={selected ? 15 : 11} />
+                          <text
+                            x="0"
+                            y="1"
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                          >
+                            {corner.number}{corner.letter || ""}
+                          </text>
+                        </g>
+                      )}
+                    </g>
+                  );
+                })}
+              </g>
+            )}
 
             {showKeyZones && lapAnalysis?.topZones?.length > 0 && (
               <g
@@ -1296,6 +1975,43 @@ export default function LapReplay({
               ))}
             </g>
 
+            {cornerExplorerOpen && selectedCorner && (
+              <g className="lap-replay-corner-events">
+                {cornerEventPoints(
+                  selectedCorner,
+                  cornerEvent,
+                  codeA,
+                  codeB,
+                  colorA,
+                  colorB
+                ).map((eventPoint) => {
+                  const point = pointAtProgress(
+                    eventPoint.progress,
+                    geometry,
+                    pathRefs,
+                    eventPoint.laneOffset
+                  );
+
+                  if (!point) return null;
+
+                  return (
+                    <g
+                      key={`corner-event-${cornerEvent}-${eventPoint.key}`}
+                      className="lap-replay-corner-event-marker"
+                      style={{ "--event-color": eventPoint.color }}
+                      transform={`translate(${point.x} ${point.y})`}
+                    >
+                      <circle className="lap-replay-corner-event-pulse" r="14" />
+                      <circle className="lap-replay-corner-event-dot" r="7" />
+                      <text x="0" y="-18" textAnchor="middle">
+                        {eventPoint.code}
+                      </text>
+                    </g>
+                  );
+                })}
+              </g>
+            )}
+
             <g ref={markerARef} className="lap-replay-marker lap-replay-marker--a">
               <circle className="lap-replay-marker-glow" r="16" />
               <circle className="lap-replay-marker-dot" r="9" />
@@ -1324,6 +2040,15 @@ export default function LapReplay({
             <span><i className="s2" />S2</span>
             <span><i className="s3" />S3</span>
           </div>
+
+          {cornerExplorerOpen && (
+            <div className="lap-replay-corner-legend">
+              <span><i style={{ background: colorA }} />{codeA} gana tiempo</span>
+              <span><i style={{ background: colorB }} />{codeB} gana tiempo</span>
+              <span><i className="neutral" />Diferencia mínima</span>
+              <small>Selecciona una curva para entender qué ocurre en entrada, punto lento y salida.</small>
+            </div>
+          )}
         </div>
 
         <aside className="lap-replay-live-panel">
@@ -1337,6 +2062,91 @@ export default function LapReplay({
             <span>Último 3% del trazado</span>
             <strong>{gainText}</strong>
           </div>
+
+          {cornerExplorerOpen && selectedCorner && (
+            <div
+              className="lap-replay-corner-inspector"
+              style={{ "--corner-driver": selectedCorner.color }}
+            >
+              <div className="lap-replay-corner-inspector-head">
+                <div>
+                  <span>Interactive Corner Explorer</span>
+                  <h3>
+                    Curva {selectedCorner.number}{selectedCorner.letter || ""}
+                    <small>{selectedCorner.type}</small>
+                  </h3>
+                </div>
+
+                <div className="lap-replay-corner-gain">
+                  <strong>{selectedCorner.winnerCode}</strong>
+                  <span>
+                    {selectedCorner.winnerKey
+                      ? `+${selectedCorner.timeGain.toFixed(3)} s`
+                      : "≈ 0.000 s"}
+                  </span>
+                </div>
+              </div>
+
+              <p className="lap-replay-corner-explanation">
+                {selectedCorner.explanation}
+              </p>
+
+              <div className="lap-replay-corner-speed-table">
+                <div className="head">
+                  <span>Velocidad</span>
+                  <strong style={{ color: colorA }}>{codeA}</strong>
+                  <strong style={{ color: colorB }}>{codeB}</strong>
+                </div>
+
+                {[
+                  ["Entrada", selectedCorner.entrySpeedA, selectedCorner.entrySpeedB],
+                  ["Punto lento", selectedCorner.apexSpeedA, selectedCorner.apexSpeedB],
+                  ["Salida", selectedCorner.exitSpeedA, selectedCorner.exitSpeedB],
+                ].map(([label, speedA, speedB]) => (
+                  <div className="row" key={label}>
+                    <span>{label}</span>
+                    <b>{Math.round(speedA)} km/h</b>
+                    <b>{Math.round(speedB)} km/h</b>
+                  </div>
+                ))}
+              </div>
+
+              <div className="lap-replay-corner-events-summary">
+                <div>
+                  <span>Frenada</span>
+                  <strong>{selectedCorner.brakeComparison.text}</strong>
+                </div>
+                <div>
+                  <span>Gas 100%</span>
+                  <strong>{selectedCorner.throttleComparison.text}</strong>
+                </div>
+              </div>
+
+              <div className="lap-replay-corner-event-switcher">
+                <span>Mostrar sobre el mapa</span>
+                <div>
+                  {[
+                    ["brake", "Frenada"],
+                    ["apex", "Punto lento"],
+                    ["throttle", "Gas 100%"],
+                  ].map(([value, label]) => (
+                    <button
+                      type="button"
+                      key={value}
+                      className={cornerEvent === value ? "active" : ""}
+                      onClick={() => setCornerEvent(value)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <small className="lap-replay-corner-note">
+                “Punto lento” usa la zona de mínima velocidad de la telemetría como aproximación práctica al ápice.
+              </small>
+            </div>
+          )}
 
           <div className="lap-replay-sector-times">
             <div className="lap-replay-sector-times-head">
@@ -1501,7 +2311,7 @@ export default function LapReplay({
             <button
               type="button"
               className={`lap-replay-explainer-button ${showKeyZones ? "active" : ""}`}
-              onClick={() => setShowKeyZones((current) => !current)}
+              onClick={toggleKeyZones}
             >
               {showKeyZones ? "Ocultar zonas" : "Mostrar dónde se ganó la vuelta"}
             </button>
