@@ -1214,6 +1214,8 @@ function LineChart({
   formatter = (value) => value?.toFixed?.(1) ?? "—",
   zeroLine = false,
   deltaContext = null,
+  onProgressSelect = null,
+  syncedProgress = null,
 }) {
   const [hover, setHover] = useState(null);
   const [pinned, setPinned] = useState(false);
@@ -1341,6 +1343,10 @@ function LineChart({
 
     setHover(buildHover(progress, pointerY));
     setPinned((current) => !current);
+
+    if (onProgressSelect) {
+      onProgressSelect(progress);
+    }
   }
 
   function accumulatedText() {
@@ -1469,6 +1475,16 @@ function LineChart({
             );
           })}
 
+          {Number.isFinite(Number(syncedProgress)) && syncedProgress !== null && (
+            <line
+              x1={x(Math.max(0, Math.min(100, Number(syncedProgress))))}
+              x2={x(Math.max(0, Math.min(100, Number(syncedProgress))))}
+              y1={pad.top}
+              y2={height - pad.bottom}
+              className="telemetry-sync-line"
+            />
+          )}
+
           {hover && (
             <>
               <line
@@ -1561,8 +1577,8 @@ function LineChart({
 
               <small>
                 {pinned
-                  ? "Pulsa de nuevo sobre el gráfico para liberar el punto."
-                  : "Haz clic para fijar este punto."}
+                  ? "Punto fijado y sincronizado con el mapa. Pulsa de nuevo para liberarlo."
+                  : "Haz clic para fijar este punto y llevar el mapa a esta zona."}
               </small>
             </div>
           </>
@@ -2308,6 +2324,10 @@ export default function Telemetry() {
 
   const [comparison, setComparison] = useState(null);
   const [pacePoints, setPacePoints] = useState([]);
+  const [replaySync, setReplaySync] = useState({
+    progress: null,
+    token: 0,
+  });
 
   const [loadingContext, setLoadingContext] = useState(true);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
@@ -2328,10 +2348,28 @@ export default function Telemetry() {
     [sessions, sessionKey]
   );
 
+  function handleChartProgressSelect(progress) {
+    const next = Number(progress);
+
+    if (!Number.isFinite(next)) return;
+
+    setReplaySync((current) => ({
+      progress: Math.max(0, Math.min(100, next)),
+      token: current.token + 1,
+    }));
+  }
+
   const driverMap = useMemo(
     () => new Map(drivers.map((driver) => [Number(driver.driver_number), driver])),
     [drivers]
   );
+
+  useEffect(() => {
+    setReplaySync({
+      progress: null,
+      token: 0,
+    });
+  }, [comparison]);
 
   useEffect(() => {
     async function loadMeetings() {
@@ -3158,6 +3196,8 @@ export default function Telemetry() {
                   driverB={driverBInfo}
                   styleA={driverAChartStyle}
                   styleB={driverBChartStyle}
+                  syncProgress={replaySync.progress}
+                  syncToken={replaySync.token}
                 />
 
                 <LineChart
@@ -3165,6 +3205,8 @@ export default function Telemetry() {
                   unit="seg"
                   zeroLine
                   valueKey="delta"
+                  onProgressSelect={handleChartProgressSelect}
+                  syncedProgress={replaySync.progress}
                   deltaContext={{
                     points: comparison.delta,
                     driverA: driverAInfo?.name_acronym || "A",
@@ -3184,6 +3226,8 @@ export default function Telemetry() {
                   title="Velocidad"
                   unit="km/h"
                   valueKey="speed"
+                  onProgressSelect={handleChartProgressSelect}
+                  syncedProgress={replaySync.progress}
                   deltaContext={{
                     points: comparison.delta,
                     driverA: driverAInfo?.name_acronym || "A",
@@ -3210,6 +3254,8 @@ export default function Telemetry() {
                   title="Acelerador"
                   unit="%"
                   valueKey="throttle"
+                  onProgressSelect={handleChartProgressSelect}
+                  syncedProgress={replaySync.progress}
                   deltaContext={{
                     points: comparison.delta,
                     driverA: driverAInfo?.name_acronym || "A",
@@ -3236,6 +3282,8 @@ export default function Telemetry() {
                   title="Freno"
                   unit="%"
                   valueKey="brake"
+                  onProgressSelect={handleChartProgressSelect}
+                  syncedProgress={replaySync.progress}
                   deltaContext={{
                     points: comparison.delta,
                     driverA: driverAInfo?.name_acronym || "A",
