@@ -78,14 +78,14 @@
 
 .lap-replay-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.62fr);
+  grid-template-columns: minmax(0, 2.05fr) minmax(300px, 0.58fr);
   gap: 0;
 }
 
 .lap-replay-map-shell {
   position: relative;
   min-width: 0;
-  padding: 17px 20px 13px;
+  padding: 14px 10px 10px;
   border-right: 1px solid rgba(255, 255, 255, 0.055);
   background:
     radial-gradient(circle at 50% 48%, rgba(255, 255, 255, 0.028), transparent 52%);
@@ -154,8 +154,8 @@
 .lap-replay-map {
   display: block;
   width: 100%;
-  height: clamp(430px, 50vw, 650px);
-  margin-top: 5px;
+  height: clamp(560px, 58vw, 780px);
+  margin-top: 2px;
   overflow: visible;
 }
 
