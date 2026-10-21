@@ -1540,3 +1540,57 @@
     text-align: left;
   }
 }
+
+
+/* ============================================================
+   INTERACTIVE TRACK EXPLORER · RECTAS
+============================================================ */
+
+.lap-replay-straight-zones {
+  pointer-events: none;
+}
+
+.lap-replay-straight-line {
+  fill: none;
+  stroke: var(--straight-color);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 11 8;
+  opacity: 0.62;
+  vector-effect: non-scaling-stroke;
+}
+
+.lap-replay-straight-marker rect {
+  fill: rgba(5, 8, 11, 0.94);
+  stroke: var(--straight-color);
+  stroke-width: 2;
+  filter: drop-shadow(0 0 6px var(--straight-color));
+}
+
+.lap-replay-straight-marker text {
+  fill: #f6f8fa;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.4px;
+}
+
+.lap-replay-corner-legend .straight-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lap-replay-corner-legend .straight-key b {
+  display: inline-grid;
+  place-items: center;
+  min-width: 25px;
+  height: 17px;
+  padding: 0 5px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 5px;
+  color: #dce2e8;
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 8px;
+  font-weight: 950;
+}
