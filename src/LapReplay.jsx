@@ -555,31 +555,164 @@ function describeZone(segment, winnerKey, codeA, codeB) {
 }
 
 function buildCornerProgress(circuitId, geometry, refs) {
-  const corners = CIRCUIT_ANNOTATIONS?.[circuitId]?.corners || [];
-  if (!corners.length || !geometry?.total) return [];
+  const annotations = CIRCUIT_ANNOTATIONS?.[circuitId]?.corners || [];
+  if (!annotations.length || !geometry?.total) return [];
 
-  const trackSamples = [];
-  for (let progress = 0; progress <= 100; progress += 0.35) {
-    const point = pointAtProgress(progress, geometry, refs, 0);
-    if (point) trackSamples.push({ progress, ...point });
+  /*
+    Las coordenadas de CircuitAnnotations son aproximadas en varios circuitos.
+    Para el Explorer usamos el mismo enfoque geométrico que la vista Circuitos:
+    detectamos los máximos de curvatura directamente sobre el SVG y después
+    numeramos las curvas en el orden natural de la vuelta.
+  */
+  const desired = annotations.length;
+  const sampleCount = Math.max(900, desired * 55);
+  const samples = new Array(sampleCount);
+
+  for (let index = 0; index < sampleCount; index += 1) {
+    const progress = (index / sampleCount) * 100;
+    samples[index] = {
+      progress,
+      point: pointAtProgress(progress, geometry, refs, 0),
+    };
   }
 
-  return corners.map((corner) => {
-    let best = null;
-    let bestDistance = Infinity;
+  const curvature = new Float32Array(sampleCount);
+  const look = Math.max(4, Math.round(sampleCount / 360));
 
-    for (const sample of trackSamples) {
-      const distance = Math.hypot(sample.x - corner.x, sample.y - corner.y);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = sample;
+  function normalizedAngleDelta(value) {
+    let angle = value;
+
+    while (angle > Math.PI) angle -= Math.PI * 2;
+    while (angle < -Math.PI) angle += Math.PI * 2;
+
+    return angle;
+  }
+
+  for (let index = 0; index < sampleCount; index += 1) {
+    const before = samples[
+      (index - look + sampleCount) % sampleCount
+    ]?.point;
+    const current = samples[index]?.point;
+    const after = samples[
+      (index + look) % sampleCount
+    ]?.point;
+
+    if (!before || !current || !after) continue;
+
+    const angleBefore = Math.atan2(
+      current.y - before.y,
+      current.x - before.x
+    );
+    const angleAfter = Math.atan2(
+      after.y - current.y,
+      after.x - current.x
+    );
+
+    curvature[index] = Math.abs(
+      normalizedAngleDelta(angleAfter - angleBefore)
+    );
+  }
+
+  const candidates = [];
+
+  for (let index = 0; index < sampleCount; index += 1) {
+    const previous =
+      curvature[(index - 1 + sampleCount) % sampleCount];
+    const current = curvature[index];
+    const next = curvature[(index + 1) % sampleCount];
+
+    if (current >= previous && current >= next) {
+      candidates.push({
+        index,
+        score: current,
+        progress: (index / sampleCount) * 100,
+      });
+    }
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+
+  function circularDistance(a, b) {
+    const direct = Math.abs(a - b);
+    return Math.min(direct, 100 - direct);
+  }
+
+  const selected = [];
+  const separations = [2.6, 2.1, 1.7, 1.3, 0.9, 0.6, 0.3];
+
+  for (const separation of separations) {
+    for (const candidate of candidates) {
+      if (selected.some((item) => item.index === candidate.index)) {
+        continue;
       }
+
+      const clear = selected.every(
+        (item) =>
+          circularDistance(item.progress, candidate.progress) >= separation
+      );
+
+      if (clear) selected.push(candidate);
+      if (selected.length >= desired) break;
     }
 
+    if (selected.length >= desired) break;
+  }
+
+  if (selected.length < desired) {
+    for (const candidate of candidates) {
+      if (selected.length >= desired) break;
+
+      if (selected.some((item) => item.index === candidate.index)) {
+        continue;
+      }
+
+      selected.push(candidate);
+    }
+  }
+
+  if (selected.length < desired) {
+    for (let index = 0; index < desired; index += 1) {
+      if (selected.length >= desired) break;
+
+      const progress = ((index + 0.5) / desired) * 100;
+
+      if (
+        selected.some(
+          (item) => circularDistance(item.progress, progress) < 0.2
+        )
+      ) {
+        continue;
+      }
+
+      selected.push({
+        index: Math.floor((progress / 100) * sampleCount) % sampleCount,
+        score: 0,
+        progress,
+      });
+    }
+  }
+
+  selected.sort((a, b) => a.progress - b.progress);
+
+  const labels = [...annotations].sort((a, b) => {
+    if (a.number !== b.number) return a.number - b.number;
+    return String(a.letter || "").localeCompare(String(b.letter || ""));
+  });
+
+  return selected.slice(0, desired).map((item, index) => {
+    const label = labels[index] || {
+      number: index + 1,
+      letter: "",
+    };
+    const point = pointAtProgress(item.progress, geometry, refs, 0);
+
     return {
-      ...corner,
-      progress: best?.progress ?? null,
-      pathDistance: bestDistance,
+      ...label,
+      x: point?.x ?? null,
+      y: point?.y ?? null,
+      progress: item.progress,
+      pathDistance: 0,
+      derivedFromGeometry: true,
     };
   });
 }
