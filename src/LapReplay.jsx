@@ -1504,6 +1504,8 @@ export default function LapReplay({
   driverB,
   styleA,
   styleB,
+  syncProgress = null,
+  syncToken = 0,
 }) {
   const circuitId = useMemo(() => resolveCircuitId(meeting), [meeting]);
   const track = circuitId ? CIRCUIT_TRACKS?.[circuitId] : null;
@@ -1698,8 +1700,8 @@ export default function LapReplay({
     const progressA = progressAtTime(seriesA, elapsed);
     const progressB = progressAtTime(seriesB, elapsed);
 
-    const pointA = pointAtProgress(progressA, geometry, pathRefs, 4.5);
-    const pointB = pointAtProgress(progressB, geometry, pathRefs, -4.5);
+    const pointA = pointAtProgress(progressA, geometry, pathRefs, 8);
+    const pointB = pointAtProgress(progressB, geometry, pathRefs, -8);
 
     if (pointA && markerARef.current) {
       markerARef.current.setAttribute(
@@ -1769,6 +1771,43 @@ export default function LapReplay({
       });
     }
   }
+
+  useEffect(() => {
+    if (
+      !geometry ||
+      !seriesA.length ||
+      !seriesB.length ||
+      !Number.isFinite(Number(syncProgress))
+    ) {
+      return;
+    }
+
+    const progress = clamp(Number(syncProgress), 0, 100);
+    const referenceSeries =
+      lapAnalysis?.winnerKey === "B" ? seriesB : seriesA;
+
+    const targetElapsed = interpolateByKey(
+      referenceSeries,
+      "progress",
+      progress,
+      "replayElapsed"
+    );
+
+    if (!Number.isFinite(targetElapsed)) return;
+
+    setPlaying(false);
+    setCornerTouring(false);
+    elapsedRef.current = targetElapsed;
+    lastFrameRef.current = null;
+    applyVisualFrame(targetElapsed, true);
+  }, [
+    syncToken,
+    syncProgress,
+    geometry,
+    seriesA,
+    seriesB,
+    lapAnalysis,
+  ]);
 
   useEffect(() => {
     applyVisualFrame(elapsedRef.current, true);
@@ -2396,7 +2435,7 @@ export default function LapReplay({
             >
               <circle className="lap-replay-marker-glow" r="16" />
               <circle className="lap-replay-marker-dot" r="9" />
-              <g className="lap-replay-marker-label" transform="translate(0 -34)">
+              <g className="lap-replay-marker-label" transform="translate(0 -43)">
                 <rect x="-27" y="-13" width="54" height="26" rx="13" />
                 <text x="0" y="1" textAnchor="middle" dominantBaseline="middle">
                   {codeA}
@@ -2410,7 +2449,7 @@ export default function LapReplay({
             >
               <circle className="lap-replay-marker-glow" r="16" />
               <circle className="lap-replay-marker-dot" r="9" />
-              <g className="lap-replay-marker-label" transform="translate(0 34)">
+              <g className="lap-replay-marker-label" transform="translate(0 43)">
                 <rect x="-27" y="-13" width="54" height="26" rx="13" />
                 <text x="0" y="1" textAnchor="middle" dominantBaseline="middle">
                   {codeB}
