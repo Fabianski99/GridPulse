@@ -2615,3 +2615,17 @@
     height: 38px;
   }
 }
+
+
+/* ============================================================
+   SINCRONIZACIÓN GRÁFICOS ↔ MAPA
+============================================================ */
+
+.telemetry-sync-line {
+  stroke: #00f5d4;
+  stroke-width: 1.6;
+  stroke-dasharray: 6 6;
+  opacity: 0.62;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
