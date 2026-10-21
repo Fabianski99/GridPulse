@@ -1,10 +1,37 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CIRCUIT_TRACKS } from "./CircuitTracks";
-import { CIRCUIT_ANNOTATIONS } from "./CircuitAnnotations";
 import "./LapReplay.css";
 
 const SECTORS = ["s1", "s2", "s3"];
 const TRAIL_HEAD_GAP = 10;
+
+const CIRCUIT_CORNER_COUNTS = Object.freeze({
+  albert_park: 14,
+  shanghai: 16,
+  suzuka: 18,
+  miami: 19,
+  villeneuve: 14,
+  monaco: 19,
+  catalunya: 14,
+  red_bull_ring: 10,
+  silverstone: 18,
+  spa: 19,
+  hungaroring: 14,
+  zandvoort: 14,
+  monza: 11,
+  madring: 22,
+  baku: 20,
+  sepang: 15,
+  marina_bay: 19,
+  americas: 20,
+  rodriguez: 17,
+  interlagos: 15,
+  vegas: 17,
+  losail: 16,
+  yas_marina: 16,
+  portimao: 15,
+  istanbul: 14,
+});
 
 const CIRCUIT_ALIASES = [
   ["bahrain", ["sakhir", "bahrain"]],
@@ -555,16 +582,15 @@ function describeZone(segment, winnerKey, codeA, codeB) {
 }
 
 function buildCornerProgress(circuitId, geometry, refs) {
-  const annotations = CIRCUIT_ANNOTATIONS?.[circuitId]?.corners || [];
-  if (!annotations.length || !geometry?.total) return [];
+  const desired = CIRCUIT_CORNER_COUNTS[circuitId] || 0;
+  if (!desired || !geometry?.total) return [];
 
   /*
-    Las coordenadas de CircuitAnnotations son aproximadas en varios circuitos.
-    Para el Explorer usamos el mismo enfoque geométrico que la vista Circuitos:
-    detectamos los máximos de curvatura directamente sobre el SVG y después
-    numeramos las curvas en el orden natural de la vuelta.
+    Fuente de verdad: conteo real de curvas del circuito.
+    La posición se deriva directamente de la geometría SVG usando el mismo
+    criterio que la vista Circuitos, evitando depender de anotaciones
+    aproximadas o con cantidades incorrectas.
   */
-  const desired = annotations.length;
   const sampleCount = Math.max(900, desired * 55);
   const samples = new Array(sampleCount);
 
@@ -694,20 +720,12 @@ function buildCornerProgress(circuitId, geometry, refs) {
 
   selected.sort((a, b) => a.progress - b.progress);
 
-  const labels = [...annotations].sort((a, b) => {
-    if (a.number !== b.number) return a.number - b.number;
-    return String(a.letter || "").localeCompare(String(b.letter || ""));
-  });
-
   return selected.slice(0, desired).map((item, index) => {
-    const label = labels[index] || {
-      number: index + 1,
-      letter: "",
-    };
     const point = pointAtProgress(item.progress, geometry, refs, 0);
 
     return {
-      ...label,
+      number: index + 1,
+      letter: "",
       x: point?.x ?? null,
       y: point?.y ?? null,
       progress: item.progress,
@@ -715,6 +733,98 @@ function buildCornerProgress(circuitId, geometry, refs) {
       derivedFromGeometry: true,
     };
   });
+}
+
+function buildStraightZones({
+  replayDelta,
+  seriesA,
+  seriesB,
+  geometry,
+  refs,
+  codeA,
+  codeB,
+  colorA,
+  colorB,
+}) {
+  if (!geometry?.total || !seriesA.length || !seriesB.length) return [];
+
+  const pieces = [];
+
+  for (let start = 0; start < 100; start += 1.5) {
+    const end = Math.min(100, start + 1.5);
+    const segment = makeSegment(
+      start,
+      end,
+      replayDelta,
+      seriesA,
+      seriesB,
+      geometry,
+      refs
+    );
+
+    if (segment.type === "Recta") {
+      pieces.push(segment);
+    }
+  }
+
+  if (!pieces.length) return [];
+
+  const merged = [];
+
+  for (const piece of pieces) {
+    const current = merged[merged.length - 1];
+
+    if (current && piece.start - current.end <= 0.2) {
+      current.end = piece.end;
+      continue;
+    }
+
+    merged.push({
+      start: piece.start,
+      end: piece.end,
+    });
+  }
+
+  return merged
+    .filter((zone) => zone.end - zone.start >= 3)
+    .map((zone, index) => {
+      const statsA = rangeStats(seriesA, zone.start, zone.end);
+      const statsB = rangeStats(seriesB, zone.start, zone.end);
+      const deltaStart = deltaAtProgress(replayDelta, zone.start);
+      const deltaEnd = deltaAtProgress(replayDelta, zone.end);
+      const gainA = deltaEnd - deltaStart;
+      const timeGain = Math.abs(gainA);
+      const winnerKey = timeGain < 0.003 ? null : gainA > 0 ? "A" : "B";
+      const winnerCode =
+        winnerKey === "A"
+          ? codeA
+          : winnerKey === "B"
+            ? codeB
+            : "Parejos";
+      const color =
+        winnerKey === "A"
+          ? colorA
+          : winnerKey === "B"
+            ? colorB
+            : "#7f8b9c";
+      const midpoint = (zone.start + zone.end) / 2;
+
+      return {
+        id: `R${index + 1}`,
+        label: `R${index + 1}`,
+        start: zone.start,
+        end: zone.end,
+        midpoint,
+        marker: pointAtProgress(midpoint, geometry, refs, 0),
+        path: buildZonePath(zone.start, zone.end, geometry, refs),
+        winnerKey,
+        winnerCode,
+        color,
+        timeGain,
+        maxSpeedA: statsA.maxSpeed,
+        maxSpeedB: statsB.maxSpeed,
+      };
+    });
 }
 
 function zoneLocationLabel(segment, cornerProgress) {
@@ -1164,7 +1274,24 @@ function buildCornerExplorer({
 
     const statsA = rangeStats(seriesA, start, end);
     const statsB = rangeStats(seriesB, start, end);
-    const type = classifySegment(start, end, statsA, statsB, geometry, refs);
+    const detectedType = classifySegment(
+      start,
+      end,
+      statsA,
+      statsB,
+      geometry,
+      refs
+    );
+    const cornerMinSpeed = Math.min(
+      statsA.minSpeed || 999,
+      statsB.minSpeed || 999
+    );
+    const type =
+      detectedType === "Recta"
+        ? cornerMinSpeed >= 185
+          ? "Curva rápida"
+          : "Curva media"
+        : detectedType;
 
     const deltaStart = deltaAtProgress(replayDelta, start);
     const deltaEnd = deltaAtProgress(replayDelta, end);
@@ -1279,9 +1406,22 @@ function buildCornerExplorer({
       decisiveRank: index + 1,
     }));
 
+  const straightZones = buildStraightZones({
+    replayDelta,
+    seriesA,
+    seriesB,
+    geometry,
+    refs,
+    codeA,
+    codeB,
+    colorA,
+    colorB,
+  });
+
   return {
     corners: numberedCorners,
     decisiveCorners,
+    straightZones,
     lapDistance,
     lapWinnerKey,
   };
@@ -2036,6 +2176,42 @@ export default function LapReplay({
               </g>
             )}
 
+            {cornerExplorerOpen && cornerExplorer?.straightZones?.length > 0 && (
+              <g className="lap-replay-straight-zones">
+                {cornerExplorer.straightZones.map((straight) => (
+                  <g
+                    key={straight.id}
+                    className="lap-replay-straight-zone"
+                    style={{ "--straight-color": straight.color }}
+                  >
+                    {straight.path && (
+                      <path
+                        className="lap-replay-straight-line"
+                        d={straight.path}
+                      />
+                    )}
+
+                    {straight.marker && (
+                      <g
+                        className="lap-replay-straight-marker"
+                        transform={`translate(${straight.marker.x} ${straight.marker.y})`}
+                      >
+                        <rect x="-20" y="-10" width="40" height="20" rx="7" />
+                        <text
+                          x="0"
+                          y="1"
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                        >
+                          {straight.label}
+                        </text>
+                      </g>
+                    )}
+                  </g>
+                ))}
+              </g>
+            )}
+
             {showKeyZones && lapAnalysis?.topZones?.length > 0 && (
               <g
                 className="lap-replay-key-zones"
@@ -2179,7 +2355,8 @@ export default function LapReplay({
               <span><i style={{ background: colorA }} />{codeA} gana tiempo</span>
               <span><i style={{ background: colorB }} />{codeB} gana tiempo</span>
               <span><i className="neutral" />Diferencia mínima</span>
-              <small>Selecciona una curva para entender qué ocurre en entrada, punto lento y salida.</small>
+              <span className="straight-key"><b>R#</b> Recta detectada</span>
+              <small>Los círculos numerados son curvas reales del circuito; las etiquetas R# identifican rectas de alta velocidad.</small>
             </div>
           )}
         </div>
