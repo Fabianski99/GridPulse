@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CIRCUIT_TRACKS } from "./CircuitTracks";
+import { CIRCUIT_CORNER_PROGRESS_OVERRIDES } from "./CircuitCornerOverrides";
 import "./LapReplay.css";
 
 const SECTORS = ["s1", "s2", "s3"];
@@ -584,6 +585,26 @@ function describeZone(segment, winnerKey, codeA, codeB) {
 function buildCornerProgress(circuitId, geometry, refs) {
   const desired = CIRCUIT_CORNER_COUNTS[circuitId] || 0;
   if (!desired || !geometry?.total) return [];
+
+  const manualProgresses =
+    CIRCUIT_CORNER_PROGRESS_OVERRIDES?.[circuitId] || null;
+
+  if (manualProgresses?.length) {
+    return manualProgresses.map((progress, index) => {
+      const point = pointAtProgress(progress, geometry, refs, 0);
+
+      return {
+        number: index + 1,
+        letter: "",
+        x: point?.x ?? null,
+        y: point?.y ?? null,
+        progress,
+        pathDistance: 0,
+        derivedFromGeometry: false,
+        manualReference: true,
+      };
+    });
+  }
 
   /*
     Fuente de verdad: conteo real de curvas del circuito.
