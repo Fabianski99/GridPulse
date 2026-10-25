@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import "./QualyPredictor.css";
 
-const OPENF1 = "https://api.openf1.org/v1";
+const OPENF1 = "/api/openf1";
 const YEARS = [2025, 2026];
 const TRAINING_EVENTS = 5;
-const REQUEST_GAP_MS = 430;
+const REQUEST_GAP_MS = 1350;
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const FEATURE_KEYS = [
   "qualyPaceGap",
@@ -68,8 +68,26 @@ function wait(ms) {
 }
 
 function safeNumber(value, fallback = null) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === "" ||
+    typeof value === "boolean"
+  ) {
+    return fallback;
+  }
+
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function plausibleLapTime(value) {
+  const parsed = safeNumber(value);
+  return parsed !== null && parsed >= 35 && parsed <= 240;
+}
+
+function plausibleGap(value) {
+  return Number.isFinite(value) && value >= 0 && value <= 6;
 }
 
 function clamp(value, min, max) {
@@ -137,7 +155,21 @@ async function queuedFetch(url) {
       }
 
       if (!response.ok) {
-        throw new Error("OpenF1 respondió " + response.status);
+        if (response.status === 429) {
+          throw new Error(
+            "OpenF1 está limitando temporalmente las consultas. GridPulse redujo el ritmo de peticiones; vuelve a generar la predicción en unos segundos."
+          );
+        }
+
+        let detail = "";
+        try {
+          const payload = await response.json();
+          detail = payload && payload.error ? payload.error : "";
+        } catch {
+          // Respuesta no JSON.
+        }
+
+        throw new Error(detail || "OpenF1 respondió " + response.status);
       }
 
       return response.json();
@@ -151,7 +183,12 @@ async function queuedFetch(url) {
 }
 
 async function openF1(endpoint, params, optional) {
-  const url = OPENF1 + "/" + endpoint + "?" + createQuery(params);
+  const query = createQuery(params);
+  const url =
+    OPENF1 +
+    "?endpoint=" +
+    encodeURIComponent(endpoint) +
+    (query ? "&" + query : "");
   const cached = RESPONSE_CACHE.get(url);
 
   if (cached && cached.expiresAt > Date.now()) return cached.data;
@@ -274,8 +311,10 @@ function cleanResults(rows) {
     }))
     .filter(
       (row) =>
-        Number.isFinite(row.durationValue) &&
-        Number.isFinite(row.positionValue)
+        plausibleLapTime(row.durationValue) &&
+        Number.isFinite(row.positionValue) &&
+        row.positionValue >= 1 &&
+        row.positionValue <= 30
     );
 }
 
@@ -307,7 +346,7 @@ function estimateTrackEvolution(laps, session) {
     .filter(
       (lap) =>
         !lap.is_pit_out_lap &&
-        Number.isFinite(safeNumber(lap.lap_duration)) &&
+        plausibleLapTime(lap.lap_duration) &&
         Number.isFinite(new Date(lap.date_start).getTime())
     )
     .map((lap) => ({
@@ -355,7 +394,7 @@ function analyzePracticeSession(session, laps, stints, drivers) {
     .filter(
       (lap) =>
         !lap.is_pit_out_lap &&
-        Number.isFinite(safeNumber(lap.lap_duration)) &&
+        plausibleLapTime(lap.lap_duration) &&
         Number.isFinite(safeNumber(lap.driver_number)) &&
         Number.isFinite(safeNumber(lap.lap_number))
     )
@@ -510,12 +549,18 @@ function analyzePracticeSession(session, laps, stints, drivers) {
 
   const qualyValues = [...raw.values()]
     .map((item) => item.qualyDuration)
-    .filter(Number.isFinite);
+    .filter(plausibleLapTime);
+  const rawQualyValues = [...raw.values()]
+    .map((item) => item.qualyRawDuration)
+    .filter(plausibleLapTime);
   const longRunValues = [...raw.values()]
     .map((item) => item.longRunDuration)
     .filter(Number.isFinite);
 
   const leaderQualy = qualyValues.length ? Math.min(...qualyValues) : null;
+  const leaderRawQualy = rawQualyValues.length
+    ? Math.min(...rawQualyValues)
+    : null;
   const leaderLongRun = longRunValues.length ? Math.min(...longRunValues) : null;
 
   const byDriver = new Map();
@@ -565,6 +610,7 @@ function analyzePracticeSession(session, laps, stints, drivers) {
     evolution,
     byDriver,
     leaderQualy,
+    leaderRawQualy,
     leaderLongRun,
   };
 }
@@ -720,7 +766,7 @@ function practiceMetrics(bundle) {
     row.position = index + 1;
   });
 
-  const latestLeader = analyses[analyses.length - 1].leaderQualy;
+  const latestLeader = analyses[analyses.length - 1].leaderRawQualy;
   const sessionNames = analyses.map(
     (analysis) => analysis.session.session_name
   );
@@ -824,7 +870,7 @@ function buildTraining(bundles) {
       const driver = drivers.get(number) || p.driver;
 
       if (!p || !target || !driver || !driver.team_name) return;
-      if (p.qualyPaceGap > 5 || target.gap > 5) return;
+      if (!plausibleGap(p.qualyPaceGap) || !plausibleGap(target.gap)) return;
 
       const team = driver.team_name;
       const profileKey = team + "::" + bundle.profile;
@@ -1002,16 +1048,24 @@ function solveLinearSystem(matrix, vector) {
   return augmented.map((row) => row[n] || 0);
 }
 
-function fitRidge(rows, lambda = 0.85) {
-  if (rows.length < FEATURE_KEYS.length + 4) return null;
+function fitRidge(rows, lambda = 1.1) {
+  const validRows = (rows || []).filter(
+    (row) =>
+      plausibleGap(row.targetGap) &&
+      FEATURE_KEYS.every((key) => Number.isFinite(row[key]))
+  );
+
+  // Ridge puede funcionar con pocos datos, pero no intentamos venderlo
+  // como ML si hay una muestra ridículamente pequeña.
+  if (validRows.length < 12) return null;
 
   const means = {};
   const scales = {};
 
   FEATURE_KEYS.forEach((key) => {
-    means[key] = average(rows.map((row) => row[key]), 0);
+    means[key] = average(validRows.map((row) => row[key]), 0);
     const variance = average(
-      rows.map((row) => Math.pow(row[key] - means[key], 2)),
+      validRows.map((row) => Math.pow(row[key] - means[key], 2)),
       0
     );
     scales[key] = Math.sqrt(variance) || 1;
@@ -1023,7 +1077,7 @@ function fitRidge(rows, lambda = 0.85) {
   );
   const xty = Array.from({ length: width }, () => 0);
 
-  rows.forEach((row) => {
+  validRows.forEach((row) => {
     const vector = [
       1,
       ...FEATURE_KEYS.map(
@@ -1048,12 +1102,13 @@ function fitRidge(rows, lambda = 0.85) {
     coefficients: solveLinearSystem(xtx, xty),
     means,
     scales,
-    sampleCount: rows.length,
+    sampleCount: validRows.length,
   };
 }
 
-
 function predictGap(model, row) {
+  if (!model) return baselineGap(row);
+
   const vector = [
     1,
     ...FEATURE_KEYS.map(
@@ -1107,6 +1162,11 @@ function baselineGap(row) {
 
 function blendedPrediction(model, row) {
   const baseline = baselineGap(row);
+
+  if (!model) {
+    return clamp(baseline, 0, 4.5);
+  }
+
   const mlRaw = predictGap(model, row);
 
   const mlClipped = clamp(
@@ -1116,11 +1176,12 @@ function blendedPrediction(model, row) {
   );
 
   const confidence = clamp(row.shortRunConfidence || 0.4, 0.15, 1);
-  const mlWeight = 0.34 + confidence * 0.16;
+  const mlWeight = 0.3 + confidence * 0.14;
 
-  return Math.max(
+  return clamp(
+    baseline * (1 - mlWeight) + mlClipped * mlWeight,
     0,
-    baseline * (1 - mlWeight) + mlClipped * mlWeight
+    4.5
   );
 }
 
@@ -1375,12 +1436,6 @@ function buildPrediction(targetBundle, historicalBundles) {
   const training = buildTraining(historicalBundles);
   const model = fitRidge(training.rows);
 
-  if (!model) {
-    throw new Error(
-      "Todavía no hay suficientes observaciones para entrenar el prototipo."
-    );
-  }
-
   const validation = temporalValidation(training);
   const target = makeTargetRows(targetBundle, training.state);
 
@@ -1404,7 +1459,7 @@ function buildPrediction(targetBundle, historicalBundles) {
   predictions = predictions
     .map((row) => ({
       ...row,
-      predictedGap: Math.max(0, row.predictedGap - minimum),
+      predictedGap: clamp(row.predictedGap - minimum, 0, 4.5),
     }))
     .sort((a, b) => a.predictedGap - b.predictedGap);
 
@@ -1412,17 +1467,40 @@ function buildPrediction(targetBundle, historicalBundles) {
     .map((bundle) => {
       const practice = practiceMetrics(bundle);
       const qualifying = qualifyingMetrics(bundle);
-      return practice && qualifying && Number.isFinite(practice.leader)
-        ? qualifying.poleDuration / practice.leader
-        : null;
+
+      if (
+        !practice ||
+        !qualifying ||
+        !plausibleLapTime(practice.leader) ||
+        !plausibleLapTime(qualifying.poleDuration)
+      ) {
+        return null;
+      }
+
+      const ratio = qualifying.poleDuration / practice.leader;
+      return ratio >= 0.94 && ratio <= 1.04 ? ratio : null;
     })
     .filter(Number.isFinite);
 
   const targetPractice = practiceMetrics(targetBundle);
-  const estimatedPole =
-    targetPractice && Number.isFinite(targetPractice.leader)
-      ? targetPractice.leader * median(ratios, 0.985)
-      : null;
+
+  if (
+    !targetPractice ||
+    !plausibleLapTime(targetPractice.leader)
+  ) {
+    throw new Error(
+      "GridPulse descartó los tiempos de práctica porque no encontró una vuelta base físicamente válida para estimar la pole."
+    );
+  }
+
+  const poleRatio = clamp(median(ratios, 0.985), 0.94, 1.04);
+  const estimatedPole = targetPractice.leader * poleRatio;
+
+  if (!plausibleLapTime(estimatedPole)) {
+    throw new Error(
+      "La pole estimada quedó fuera de un rango de tiempo razonable. La predicción fue cancelada para no mostrar datos corruptos."
+    );
+  }
 
   const sigma = Math.max(validation.mae || 0.24, 0.12);
   const probabilities = calculateProbabilities(
@@ -1519,13 +1597,14 @@ function buildPrediction(targetBundle, historicalBundles) {
 
   const confidence = clamp(
     Math.round(
-      82 -
-        (validation.mae || 0.28) * 38 -
+      (model ? 78 : 52) -
+        (validation.mae || (model ? 0.38 : 0.6)) * 34 -
         Math.max(0, 4 - historicalBundles.length) * 7 +
-        averageConfidence * 10
+        averageConfidence * 8 -
+        (validation.samples === 0 ? 12 : 0)
     ),
-    35,
-    88
+    28,
+    model ? 86 : 58
   );
 
   return {
@@ -1538,6 +1617,8 @@ function buildPrediction(targetBundle, historicalBundles) {
     profileLabel,
     trainingEvents: historicalBundles.length,
     trainingRows: training.rows.length,
+    modelActive: Boolean(model),
+    modelSamples: model ? model.sampleCount : 0,
     shortRuns: targetPractice ? targetPractice.shortRuns : 0,
     longRuns: targetPractice ? targetPractice.longRuns : 0,
     trackEvolution: targetPractice ? targetPractice.evolution : 0,
@@ -1707,7 +1788,7 @@ export default function QualyPredictor() {
 
         <div className="qualy-model-chip">
           <span>Modelo</span>
-          <strong>Ridge Regression</strong>
+          <strong>Ridge + baseline estable</strong>
           <small>Validación temporal · Monte Carlo</small>
         </div>
       </section>
@@ -1784,7 +1865,11 @@ export default function QualyPredictor() {
             <article>
               <span>Entrenamiento</span>
               <strong>{prediction.trainingRows}</strong>
-              <small>{prediction.trainingEvents} GP anteriores</small>
+              <small>
+                {prediction.trainingEvents} GP · {prediction.modelActive
+                  ? prediction.modelSamples + " muestras ML"
+                  : "baseline de seguridad activo"}
+              </small>
             </article>
 
             <article>
@@ -1792,7 +1877,9 @@ export default function QualyPredictor() {
               <strong>
                 {prediction.validation.mae !== null
                   ? "±" + prediction.validation.mae.toFixed(3) + " s"
-                  : "Sin validar"}
+                  : prediction.modelActive
+                    ? "Sin validar"
+                    : "Baseline"}
               </strong>
               <small>{prediction.validation.samples} observaciones de prueba</small>
             </article>
