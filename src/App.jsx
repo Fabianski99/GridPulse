@@ -3,6 +3,7 @@ import "./App.css";
 import Circuits from "./Circuits";
 import Telemetry from "./Telemetry";
 import RaceHub from "./RaceHub";
+import QualyPredictor from "./QualyPredictor";
 import {CountryFlag, FlagBackground } from "./CountryFlag";
 import CurrentSeasonResults from "./CurrentSeasonResults";
 import "./Readability.css";
@@ -2511,6 +2512,19 @@ export default function App() {
 
             <button
               className={`nav-button ${
+                page === "prediction"
+                  ? "active"
+                  : ""
+              }`}
+              onClick={() =>
+                navigate("prediction")
+              }
+            >
+              Predicción
+            </button>
+
+            <button
+              className={`nav-button ${
                 page === "racehub"
                   ? "active"
                   : ""
@@ -2533,6 +2547,8 @@ export default function App() {
         <Circuits />
       ) : page === "telemetry" ? (
         <Telemetry />
+      ) : page === "prediction" ? (
+        <QualyPredictor />
       ) : (
         <RaceHub
           initialRace={raceHubRace}
