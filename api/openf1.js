@@ -180,9 +180,18 @@ export default async function handler(
     const data =
       await response.json();
 
+    const longLivedEndpoints = new Set([
+      "drivers",
+      "laps",
+      "stints",
+      "session_result",
+    ]);
+
     res.setHeader(
       "Cache-Control",
-      "no-store"
+      longLivedEndpoints.has(endpoint)
+        ? "public, s-maxage=1800, stale-while-revalidate=86400"
+        : "public, s-maxage=300, stale-while-revalidate=1800"
     );
 
     return res
