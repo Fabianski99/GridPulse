@@ -26,6 +26,23 @@ const FEATURE_KEYS = [
   "qualyPriorMomentum",
 ];
 
+const RANK_FEATURE_KEYS = [
+  "qualyPaceGap",
+  "theoreticalGap",
+  "practicePosition",
+  "shortRunConfidence",
+  "teammateDelta",
+  "driverFormGap",
+  "teamFormGap",
+  "teamTrend",
+  "trackFitGap",
+  "driverFormPosition",
+  "practiceCoverage",
+  "qualyPriorStrength",
+  "qualyPriorPosition",
+  "qualyPriorMomentum",
+];
+
 const TRACK_PROFILES = {
   "albert park": "balanced",
   shanghai: "balanced",
@@ -2266,6 +2283,455 @@ function blendModelGaps(baseGap, row, ridge, gradient) {
   ) / Math.max(totalWeight, 0.001);
 }
 
+function fitPairwiseRanker(rows, options = {}) {
+  const validRows = (rows || []).filter(
+    (row) =>
+      Number.isFinite(row.eventIndex) &&
+      Number.isFinite(row.targetPosition) &&
+      RANK_FEATURE_KEYS.every((key) =>
+        Number.isFinite(row[key])
+      )
+  );
+
+  if (validRows.length < 30) return null;
+
+  const means = {};
+  const scales = {};
+
+  RANK_FEATURE_KEYS.forEach((key) => {
+    means[key] = average(
+      validRows.map((row) => row[key]),
+      0
+    );
+    const variance = average(
+      validRows.map((row) =>
+        Math.pow(row[key] - means[key], 2)
+      ),
+      0
+    );
+    scales[key] = Math.sqrt(variance) || 1;
+  });
+
+  const groups = new Map();
+
+  validRows.forEach((row) => {
+    if (!groups.has(row.eventIndex)) {
+      groups.set(row.eventIndex, []);
+    }
+    groups.get(row.eventIndex).push(row);
+  });
+
+  const vectorOf = (row) =>
+    RANK_FEATURE_KEYS.map(
+      (key) => (row[key] - means[key]) / scales[key]
+    );
+
+  const pairs = [];
+
+  groups.forEach((eventRows) => {
+    for (let i = 0; i < eventRows.length; i += 1) {
+      for (let j = i + 1; j < eventRows.length; j += 1) {
+        const first = eventRows[i];
+        const second = eventRows[j];
+
+        if (first.targetPosition === second.targetPosition) {
+          continue;
+        }
+
+        const better =
+          first.targetPosition < second.targetPosition
+            ? first
+            : second;
+        const worse = better === first ? second : first;
+
+        const betterVector = vectorOf(better);
+        const worseVector = vectorOf(worse);
+        const diff = betterVector.map(
+          (value, index) => value - worseVector[index]
+        );
+
+        const bestPosition = Math.min(
+          better.targetPosition,
+          worse.targetPosition
+        );
+        const positionDistance = Math.abs(
+          better.targetPosition - worse.targetPosition
+        );
+
+        const topWeight =
+          bestPosition <= 3
+            ? 2.8
+            : bestPosition <= 10
+              ? 1.45
+              : 0.85;
+        const distanceWeight = clamp(
+          0.65 + positionDistance / 8,
+          0.65,
+          1.65
+        );
+
+        pairs.push({
+          diff,
+          weight: topWeight * distanceWeight,
+        });
+      }
+    }
+  });
+
+  if (pairs.length < 120) return null;
+
+  const epochs = options.epochs || 240;
+  const baseLearningRate =
+    options.learningRate || 0.085;
+  const l2 = options.l2 || 0.028;
+  const weights = Array.from(
+    { length: RANK_FEATURE_KEYS.length },
+    () => 0
+  );
+  const totalPairWeight = pairs.reduce(
+    (sum, pair) => sum + pair.weight,
+    0
+  );
+
+  for (let epoch = 0; epoch < epochs; epoch += 1) {
+    const gradient = Array.from(
+      { length: weights.length },
+      () => 0
+    );
+
+    pairs.forEach((pair) => {
+      const score = pair.diff.reduce(
+        (sum, value, index) =>
+          sum + value * weights[index],
+        0
+      );
+      const probability =
+        1 / (1 + Math.exp(-clamp(score, -18, 18)));
+      const factor =
+        (probability - 1) * pair.weight;
+
+      pair.diff.forEach((value, index) => {
+        gradient[index] += factor * value;
+      });
+    });
+
+    const learningRate =
+      baseLearningRate / (1 + epoch * 0.012);
+
+    weights.forEach((weight, index) => {
+      const normalizedGradient =
+        gradient[index] /
+          Math.max(totalPairWeight, 0.001) +
+        l2 * weight;
+      weights[index] -=
+        learningRate * normalizedGradient;
+    });
+  }
+
+  return {
+    type: "pairwise_ranker",
+    weights,
+    means,
+    scales,
+    pairCount: pairs.length,
+    sampleCount: validRows.length,
+  };
+}
+
+function predictPairwiseScore(model, row) {
+  if (!model) return 0;
+
+  return RANK_FEATURE_KEYS.reduce(
+    (sum, key, index) =>
+      sum +
+      ((row[key] - model.means[key]) /
+        model.scales[key]) *
+        model.weights[index],
+    0
+  );
+}
+
+function predictedGapForModel(
+  type,
+  row,
+  ridge,
+  gradient
+) {
+  if (type === "ridge" && ridge) {
+    return applyResidualModel(
+      row.historicalBaseGap,
+      ridge,
+      row
+    );
+  }
+
+  if (type === "gradient_boosting" && gradient) {
+    return applyResidualModel(
+      row.historicalBaseGap,
+      gradient,
+      row
+    );
+  }
+
+  if (type === "ensemble" && (ridge || gradient)) {
+    return blendModelGaps(
+      row.historicalBaseGap,
+      row,
+      ridge,
+      gradient
+    );
+  }
+
+  return row.historicalBaseGap;
+}
+
+function rankIndexMap(rows, scoreGetter, descending = false) {
+  const sorted = [...rows].sort((a, b) => {
+    const aScore = scoreGetter(a);
+    const bScore = scoreGetter(b);
+
+    if (aScore === bScore) {
+      return a.driverNumber - b.driverNumber;
+    }
+
+    return descending
+      ? bScore - aScore
+      : aScore - bScore;
+  });
+
+  return new Map(
+    sorted.map((row, index) => [
+      row.driverNumber,
+      index,
+    ])
+  );
+}
+
+function fuseRankingRows(
+  rows,
+  pairwiseModel,
+  pairwiseWeight
+) {
+  if (
+    !pairwiseModel ||
+    pairwiseWeight <= 0 ||
+    rows.length < 2
+  ) {
+    return rows.map((row) => ({
+      ...row,
+      rankFusionScore: null,
+      pairwiseScore: null,
+    }));
+  }
+
+  const denominator = Math.max(1, rows.length - 1);
+  const gapRanks = rankIndexMap(
+    rows,
+    (row) => row.predictedGap,
+    false
+  );
+  const pairRanks = rankIndexMap(
+    rows,
+    (row) => predictPairwiseScore(pairwiseModel, row),
+    true
+  );
+
+  return rows.map((row) => {
+    const gapRank =
+      (gapRanks.get(row.driverNumber) || 0) /
+      denominator;
+    const pairRank =
+      (pairRanks.get(row.driverNumber) || 0) /
+      denominator;
+
+    return {
+      ...row,
+      pairwiseScore:
+        predictPairwiseScore(pairwiseModel, row),
+      rankFusionScore:
+        gapRank * (1 - pairwiseWeight) +
+        pairRank * pairwiseWeight,
+    };
+  });
+}
+
+function rankingValidation(training) {
+  const events = [
+    ...new Set(
+      training.rows.map((row) => row.eventIndex)
+    ),
+  ];
+  const weights = [0, 0.25, 0.5, 0.75, 1];
+  const buckets = new Map(
+    weights.map((weight) => [
+      weight,
+      {
+        positionErrors: [],
+        ndcg: [],
+        top3Hits: 0,
+        top3Possible: 0,
+        events: 0,
+        pairCounts: [],
+      },
+    ])
+  );
+
+  events.slice(2).forEach((eventIndex) => {
+    const trainRows = training.rows.filter(
+      (row) => row.eventIndex < eventIndex
+    );
+    const testRows = training.rows.filter(
+      (row) => row.eventIndex === eventIndex
+    );
+
+    const localValidation = temporalValidation({
+      rows: trainRows,
+    });
+    const ridge = fitRidge(trainRows);
+    const gradient = fitGradientBoosting(trainRows);
+    const pairwise = fitPairwiseRanker(trainRows);
+
+    const baseRows = testRows.map((row) => ({
+      ...row,
+      predictedGap: predictedGapForModel(
+        localValidation.winner,
+        row,
+        ridge,
+        gradient
+      ),
+    }));
+
+    weights.forEach((weight) => {
+      const bucket = buckets.get(weight);
+      const fused = fuseRankingRows(
+        baseRows,
+        pairwise,
+        weight
+      )
+        .sort((a, b) => {
+          if (
+            weight > 0 &&
+            Number.isFinite(a.rankFusionScore) &&
+            Number.isFinite(b.rankFusionScore)
+          ) {
+            return (
+              a.rankFusionScore -
+                b.rankFusionScore ||
+              a.predictedGap - b.predictedGap
+            );
+          }
+
+          return a.predictedGap - b.predictedGap;
+        })
+        .map((row, index) => ({
+          ...row,
+          predictedGap: index,
+        }));
+
+      const metrics = rankMetrics(fused);
+
+      if (Number.isFinite(metrics.positionMae)) {
+        bucket.positionErrors.push(
+          metrics.positionMae
+        );
+      }
+      if (Number.isFinite(metrics.ndcg)) {
+        bucket.ndcg.push(metrics.ndcg);
+      }
+
+      bucket.top3Hits += metrics.top3Hits;
+      bucket.top3Possible += metrics.top3Possible;
+      bucket.events += 1;
+
+      if (pairwise) {
+        bucket.pairCounts.push(pairwise.pairCount);
+      }
+    });
+  });
+
+  const candidates = [...buckets.entries()]
+    .map(([weight, bucket]) => {
+      const positionMae = average(
+        bucket.positionErrors,
+        null
+      );
+      const ndcg = average(bucket.ndcg, null);
+      const top3Rate =
+        bucket.top3Possible > 0
+          ? bucket.top3Hits / bucket.top3Possible
+          : null;
+
+      const selectionScore =
+        Number.isFinite(positionMae) &&
+        Number.isFinite(ndcg) &&
+        Number.isFinite(top3Rate)
+          ? positionMae * 0.58 +
+            (1 - ndcg) * 3.1 +
+            (1 - top3Rate) * 0.9
+          : null;
+
+      return {
+        weight,
+        positionMae,
+        ndcg,
+        top3Rate,
+        events: bucket.events,
+        pairCount: Math.round(
+          average(bucket.pairCounts, 0)
+        ),
+        selectionScore,
+      };
+    })
+    .filter((item) =>
+      Number.isFinite(item.selectionScore)
+    )
+    .sort(
+      (a, b) =>
+        a.selectionScore - b.selectionScore
+    );
+
+  const baseline =
+    candidates.find((item) => item.weight === 0) ||
+    null;
+  const best = candidates[0] || baseline;
+  const improvement =
+    baseline && best
+      ? baseline.selectionScore -
+        best.selectionScore
+      : 0;
+  const active =
+    best &&
+    best.weight > 0 &&
+    improvement >= 0.025;
+
+  return {
+    active: Boolean(active),
+    weight: active ? best.weight : 0,
+    positionMae:
+      active && Number.isFinite(best.positionMae)
+        ? best.positionMae
+        : baseline && Number.isFinite(baseline.positionMae)
+          ? baseline.positionMae
+          : null,
+    ndcg:
+      active && Number.isFinite(best.ndcg)
+        ? best.ndcg
+        : baseline && Number.isFinite(baseline.ndcg)
+          ? baseline.ndcg
+          : null,
+    top3Rate:
+      active && Number.isFinite(best.top3Rate)
+        ? best.top3Rate
+        : baseline && Number.isFinite(baseline.top3Rate)
+          ? baseline.top3Rate
+          : null,
+    pairCount:
+      active ? best.pairCount : 0,
+    improvement,
+    candidates,
+  };
+}
+
 function temporalValidation(training) {
   const events = [...new Set(training.rows.map((row) => row.eventIndex))];
   const buckets = {
@@ -2713,9 +3179,13 @@ function buildPrediction(
   );
 
   const validation = temporalValidation(training);
+  const rankValidation = rankingValidation(training);
 
   const ridgeModel = fitRidge(training.rows);
   const gradientModel = fitGradientBoosting(training.rows);
+  const pairwiseModel = rankValidation.active
+    ? fitPairwiseRanker(training.rows)
+    : null;
 
   const selectedModel =
     validation.winner === "gradient_boosting"
@@ -2773,17 +3243,51 @@ function buildPrediction(
 
   const minimum = Math.min(...predictions.map((row) => row.predictedGap));
 
-  predictions = predictions
-    .map((row) => ({
-      ...row,
-      predictedGap: clamp(row.predictedGap - minimum, 0, 4.5),
-    }))
-    .sort(
-      (a, b) =>
+  predictions = predictions.map((row) => ({
+    ...row,
+    predictedGap: clamp(
+      row.predictedGap - minimum,
+      0,
+      4.5
+    ),
+  }));
+
+  const gapSlots = predictions
+    .map((row) => row.predictedGap)
+    .sort((a, b) => a - b);
+
+  predictions = fuseRankingRows(
+    predictions,
+    pairwiseModel,
+    rankValidation.weight
+  ).sort((a, b) => {
+    if (
+      rankValidation.active &&
+      Number.isFinite(a.rankFusionScore) &&
+      Number.isFinite(b.rankFusionScore)
+    ) {
+      return (
+        a.rankFusionScore -
+          b.rankFusionScore ||
         a.predictedGap - b.predictedGap ||
-        a.qualyPaceGap - b.qualyPaceGap ||
-        a.qualyPriorPosition - b.qualyPriorPosition
+        a.qualyPaceGap - b.qualyPaceGap
+      );
+    }
+
+    return (
+      a.predictedGap - b.predictedGap ||
+      a.qualyPaceGap - b.qualyPaceGap ||
+      a.qualyPriorPosition - b.qualyPriorPosition
     );
+  });
+
+  // El ranker cambia el orden, pero conserva la distribución de gaps
+  // aprendida por el modelo de tiempos.
+  predictions = predictions.map((row, index) => ({
+    ...row,
+    preRankGap: row.predictedGap,
+    predictedGap: gapSlots[index],
+  }));
 
   // Solo separa empates exactos al milisegundo; no cambia el orden aprendido.
   let previousGap = -1;
@@ -2948,18 +3452,28 @@ function buildPrediction(
     0,
     1
   );
+  const effectivePositionMae =
+    rankValidation.positionMae ??
+    validation.positionMae;
+  const effectiveNdcg =
+    rankValidation.ndcg ??
+    validation.ndcg;
+  const effectiveTop3Rate =
+    rankValidation.top3Rate ??
+    validation.top3Rate;
+
   const rankingConfidence = clamp(
-    1 - (validation.positionMae ?? 4.5) / 6,
+    1 - (effectivePositionMae ?? 4.5) / 6,
     0,
     1
   );
   const ndcgConfidence = clamp(
-    validation.ndcg ?? 0.72,
+    effectiveNdcg ?? 0.72,
     0,
     1
   );
   const top3Confidence = clamp(
-    validation.top3Rate ?? 0.35,
+    effectiveTop3Rate ?? 0.35,
     0,
     1
   );
@@ -2994,6 +3508,7 @@ function buildPrediction(
   return {
     predictions,
     validation,
+    rankValidation,
     backtest,
     confidence,
     estimatedPole,
@@ -3013,8 +3528,16 @@ function buildPrediction(
         ? selectedModel.sampleCount
         : training.rows.length,
     selectedModel: validation.winner,
-    selectedModelLabel: modelLabel(validation.winner),
+    selectedModelLabel:
+      modelLabel(validation.winner) +
+      (rankValidation.active
+        ? " + Pairwise"
+        : ""),
     modelMetrics: validation.metrics,
+    rankerActive: rankValidation.active,
+    rankerWeight: rankValidation.weight,
+    rankerPairs:
+      pairwiseModel ? pairwiseModel.pairCount : 0,
     qualyPriorCoverage: priorCoverage,
     shortRuns: targetPractice ? targetPractice.shortRuns : 0,
     longRuns: targetPractice ? targetPractice.longRuns : 0,
@@ -3218,7 +3741,7 @@ export default function QualyPredictor() {
         selectedMeeting.startDate
       );
 
-      setProgress("Validando baseline, Ridge, Gradient Boosting y ensemble…");
+      setProgress("Validando tiempos y Pairwise Ranker…");
 
       const result = buildPrediction(
         targetBundle,
@@ -3256,7 +3779,7 @@ export default function QualyPredictor() {
         <div className="qualy-model-chip">
           <span>Modelo</span>
           <strong>Selección automática</strong>
-          <small>Baseline · Ridge · Gradient Boosting · Ensemble</small>
+          <small>Baseline · Ridge · Gradient Boosting · Ensemble · Pairwise Ranker</small>
         </div>
       </section>
 
@@ -3350,12 +3873,16 @@ export default function QualyPredictor() {
               </strong>
               <small>
                 {prediction.validation.samples} observaciones · ranking ±
-                {prediction.validation.positionMae !== null
-                  ? prediction.validation.positionMae.toFixed(2)
-                  : "—"} pos. · Top 3{" "}
-                {prediction.validation.top3Rate !== null
-                  ? Math.round(prediction.validation.top3Rate * 100)
-                  : 0}% · pole ±
+                {prediction.rankValidation.positionMae !== null
+                  ? prediction.rankValidation.positionMae.toFixed(2)
+                  : prediction.validation.positionMae !== null
+                    ? prediction.validation.positionMae.toFixed(2)
+                    : "—"} pos. · Top 3{" "}
+                {prediction.rankValidation.top3Rate !== null
+                  ? Math.round(prediction.rankValidation.top3Rate * 100)
+                  : prediction.validation.top3Rate !== null
+                    ? Math.round(prediction.validation.top3Rate * 100)
+                    : 0}% · pole ±
                 {prediction.poleValidation.mae !== null
                   ? prediction.poleValidation.mae.toFixed(3)
                   : "—"} s
@@ -3398,6 +3925,13 @@ export default function QualyPredictor() {
               <strong>{prediction.selectedModelLabel}</strong>
               <small>
                 Elegido por validación temporal · {prediction.qualyPriorCoverage} pilotos con prior de qualy
+                {prediction.rankerActive
+                  ? " · Pairwise " +
+                    Math.round(prediction.rankerWeight * 100) +
+                    "% · " +
+                    prediction.rankerPairs +
+                    " pares"
+                  : ""}
               </small>
             </article>
           </section>
@@ -3566,11 +4100,11 @@ export default function QualyPredictor() {
               <span>MÉTODO</span>
               <h2>El modelo predice gap a pole, no una posición fija.</h2>
               <p>
-                GridPulse valida cada alternativa por error de tiempo y por
-                calidad del ranking. La pole se estima aparte mediante el delta
-                entre práctica y clasificación, con mayor peso de FP3 y del
-                mismo circuito; después 450 simulaciones alrededor del error
-                histórico generan las probabilidades.
+                GridPulse separa ahora dos tareas: el modelo de tiempos estima
+                los gaps y un Pairwise Ranker aprende qué piloto debe quedar
+                delante de otro. Su peso se activa únicamente si mejora la
+                validación temporal; la pole se estima aparte mediante el delta
+                entre práctica y clasificación.
               </p>
             </div>
 
@@ -3587,6 +4121,7 @@ export default function QualyPredictor() {
               <strong>Comparación con el compañero</strong>
               <strong>Historial reciente de pole / primera fila / Q3</strong>
               <strong>Forma de qualy ponderada por recencia</strong>
+              <strong>Pairwise Ranker con foco extra en Top 3</strong>
               <strong>Encaje con circuitos similares</strong>
             </div>
           </section>
