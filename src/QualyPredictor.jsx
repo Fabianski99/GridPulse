@@ -26,7 +26,7 @@ const FEATURE_KEYS = [
   "qualyPriorMomentum",
 ];
 
-const TRACK_PROFILES = {const TRACK_PROFILES = {
+const TRACK_PROFILES = {
   "albert park": "balanced",
   shanghai: "balanced",
   suzuka: "high_speed",
@@ -508,7 +508,7 @@ function attachQualyPriors(rows, priors) {
   });
 }
 
-function calibrateWithQualyPrior(predictions) {function calibrateWithQualyPrior(predictions) {
+function calibrateWithQualyPrior(predictions) {
   const rows = predictions || [];
   const strengths = rows
     .map((row) => row.qualyPrior && row.qualyPrior.strength)
@@ -1080,7 +1080,7 @@ async function loadBundle(meeting, target) {
   };
 }
 
-function practiceMetrics(bundle) {function practiceMetrics(bundle) {
+function practiceMetrics(bundle) {
   const analyses = bundle.practiceAnalyses || [];
   if (!analyses.length) return null;
 
@@ -1554,7 +1554,7 @@ function baselineGap(row) {
   ) / total;
 }
 
-function fitRidge(rows, lambda = 1.1, targetKey = "residualTarget") {function fitRidge(rows, lambda = 1.1, targetKey = "residualTarget") {
+function fitRidge(rows, lambda = 1.1, targetKey = "residualTarget") {
   const validRows = (rows || []).filter(
     (row) =>
       Number.isFinite(row[targetKey]) &&
@@ -2079,7 +2079,7 @@ function temporalValidation(training) {
   };
 }
 
-function modelLabel(type) {function modelLabel(type) {
+function modelLabel(type) {
   if (type === "ensemble") {
     return "Ensemble híbrido";
   }
