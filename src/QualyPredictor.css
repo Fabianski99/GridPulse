@@ -1,0 +1,779 @@
+.qualy-page {
+  width: min(1380px, calc(100% - 40px));
+  margin: auto;
+  padding: 42px 0 90px;
+}
+
+.qualy-hero,
+.qualy-control-card,
+.qualy-loading,
+.qualy-empty,
+.qualy-backtest,
+.qualy-ranking-card,
+.qualy-driver-card,
+.qualy-method-card,
+.qualy-status-grid > article {
+  border: 1px solid rgba(255,255,255,.075);
+  background: rgba(9,12,15,.96);
+  border-radius: 20px;
+}
+
+.qualy-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 28px;
+  align-items: flex-end;
+  padding: 32px;
+  background:
+    radial-gradient(circle at 75% 0%, rgba(0,245,212,.09), transparent 35%),
+    radial-gradient(circle at 100% 100%, rgba(160,107,255,.06), transparent 35%),
+    rgba(9,12,15,.96);
+}
+
+.qualy-eyebrow,
+.qualy-section-head span,
+.qualy-backtest > div:first-child > span,
+.qualy-method-card > div > span {
+  color: #00f5d4;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 1px;
+}
+
+.qualy-hero h1 {
+  margin: 7px 0 0;
+  font-size: clamp(36px, 5vw, 62px);
+  line-height: .95;
+  letter-spacing: -2.5px;
+}
+
+.qualy-hero p {
+  max-width: 760px;
+  margin: 14px 0 0;
+  color: #909bab;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.qualy-model-chip {
+  min-width: 220px;
+  padding: 15px 18px;
+  border: 1px solid rgba(0,245,212,.14);
+  border-radius: 14px;
+  background: rgba(0,245,212,.035);
+}
+
+.qualy-model-chip span,
+.qualy-model-chip strong,
+.qualy-model-chip small {
+  display: block;
+}
+
+.qualy-model-chip span {
+  color: #748195;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.qualy-model-chip strong {
+  margin-top: 5px;
+  color: #f4f7f9;
+  font-size: 17px;
+}
+
+.qualy-model-chip small {
+  margin-top: 4px;
+  color: #8793a3;
+  font-size: 11px;
+}
+
+.qualy-control-card {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.2fr) minmax(220px, .7fr) auto;
+  gap: 14px;
+  align-items: end;
+  margin-top: 18px;
+  padding: 18px;
+}
+
+.qualy-control-card label > span,
+.qualy-control-context > span {
+  display: block;
+  margin-bottom: 7px;
+  color: #7f8b9b;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.qualy-control-card select {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 11px;
+  color: #e8edf2;
+  background: #0d1115;
+  font: inherit;
+  font-size: 13px;
+}
+
+.qualy-control-context {
+  min-height: 48px;
+  padding: 7px 12px;
+  border-left: 2px solid rgba(0,245,212,.35);
+}
+
+.qualy-control-context strong,
+.qualy-control-context small {
+  display: block;
+}
+
+.qualy-control-context strong {
+  color: #e6eaee;
+  font-size: 13px;
+}
+
+.qualy-control-context small {
+  margin-top: 4px;
+  color: #7c8999;
+  font-size: 11px;
+}
+
+.qualy-run {
+  min-height: 48px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 11px;
+  color: #04100e;
+  background: #00f5d4;
+  font-size: 12px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.qualy-run:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.qualy-loading {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 22px;
+}
+
+.qualy-loading-ring {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(0,245,212,.15);
+  border-top-color: #00f5d4;
+  border-radius: 50%;
+  animation: qualy-spin .8s linear infinite;
+}
+
+@keyframes qualy-spin { to { transform: rotate(360deg); } }
+
+.qualy-loading strong,
+.qualy-loading span {
+  display: block;
+}
+
+.qualy-loading strong {
+  color: #f5f7fa;
+  font-size: 14px;
+}
+
+.qualy-loading span {
+  margin-top: 4px;
+  color: #8490a0;
+  font-size: 12px;
+}
+
+.qualy-error {
+  margin-top: 18px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255,49,87,.25);
+  border-radius: 14px;
+  color: #ff728e;
+  background: rgba(255,49,87,.045);
+  font-size: 13px;
+}
+
+.qualy-empty {
+  margin-top: 18px;
+  padding: 34px;
+  text-align: center;
+}
+
+.qualy-empty > span {
+  color: #00f5d4;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: .9px;
+}
+
+.qualy-empty h2 {
+  max-width: 720px;
+  margin: 8px auto 0;
+  font-size: 24px;
+}
+
+.qualy-empty p {
+  max-width: 680px;
+  margin: 12px auto 0;
+  color: #8591a1;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.qualy-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.qualy-status-grid > article {
+  padding: 15px;
+}
+
+.qualy-status-grid span,
+.qualy-status-grid strong,
+.qualy-status-grid small {
+  display: block;
+}
+
+.qualy-status-grid span {
+  color: #798698;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.qualy-status-grid strong {
+  margin-top: 7px;
+  color: #f4f7f9;
+  font-size: 21px;
+}
+
+.qualy-status-grid small {
+  margin-top: 5px;
+  color: #7d8998;
+  font-size: 11px;
+}
+
+.qualy-status-grid article > i {
+  display: block;
+  height: 4px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(255,255,255,.06);
+}
+
+.qualy-status-grid article > i b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #00f5d4;
+}
+
+.qualy-backtest {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  margin-top: 12px;
+  padding: 18px 20px;
+  border-color: rgba(160,107,255,.16);
+}
+
+.qualy-backtest h2 {
+  margin: 4px 0 0;
+  font-size: 19px;
+}
+
+.qualy-backtest-metrics {
+  display: flex;
+  gap: 8px;
+}
+
+.qualy-backtest-metrics > div {
+  min-width: 120px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,.055);
+  border-radius: 10px;
+  background: rgba(255,255,255,.018);
+}
+
+.qualy-backtest-metrics span,
+.qualy-backtest-metrics strong {
+  display: block;
+}
+
+.qualy-backtest-metrics span {
+  color: #7c8999;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.qualy-backtest-metrics strong {
+  margin-top: 4px;
+  font-size: 16px;
+}
+
+.qualy-main-grid {
+  display: grid;
+  grid-template-columns: minmax(0,1.65fr) minmax(300px,.65fr);
+  gap: 12px;
+  align-items: start;
+  margin-top: 12px;
+}
+
+.qualy-ranking-card,
+.qualy-driver-card {
+  overflow: hidden;
+}
+
+.qualy-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 18px;
+  padding: 18px;
+  border-bottom: 1px solid rgba(255,255,255,.055);
+}
+
+.qualy-section-head h2 {
+  margin: 5px 0 0;
+  font-size: 22px;
+}
+
+.qualy-section-head > div:last-child {
+  text-align: right;
+}
+
+.qualy-section-head > div:last-child span,
+.qualy-section-head > div:last-child strong {
+  display: block;
+}
+
+.qualy-section-head > div:last-child span {
+  color: #7d8998;
+  font-size: 10px;
+}
+
+.qualy-section-head > div:last-child strong {
+  margin-top: 3px;
+  color: #00f5d4;
+  font-size: 17px;
+}
+
+.qualy-ranking-head,
+.qualy-ranking > button {
+  display: grid;
+  grid-template-columns: 46px minmax(160px,1.3fr) 120px 64px 64px;
+  align-items: center;
+  gap: 8px;
+}
+
+.qualy-ranking-head.with-real,
+.qualy-ranking:has(.qualy-actual) > button {
+  grid-template-columns: 46px minmax(160px,1.3fr) 120px 64px 64px 54px;
+}
+
+.qualy-ranking-head {
+  padding: 9px 14px;
+  color: #6f7c8d;
+  background: rgba(255,255,255,.015);
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.qualy-ranking > button {
+  position: relative;
+  width: 100%;
+  padding: 10px 14px;
+  border: 0;
+  border-top: 1px solid rgba(255,255,255,.04);
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.qualy-ranking > button::before {
+  content: "";
+  position: absolute;
+  inset: 7px auto 7px 0;
+  width: 3px;
+  border-radius: 99px;
+  background: var(--driver-color);
+  opacity: .28;
+}
+
+.qualy-ranking > button:hover,
+.qualy-ranking > button.active {
+  background: color-mix(in srgb,var(--driver-color) 6%,transparent);
+}
+
+.qualy-ranking > button.active::before {
+  opacity: 1;
+  box-shadow: 0 0 12px var(--driver-color);
+}
+
+.qualy-pos {
+  color: #f1f4f7;
+  font-size: 18px;
+  text-align: center;
+}
+
+.qualy-driver {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.qualy-driver > i {
+  width: 7px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 99px;
+  background: var(--driver-color);
+}
+
+.qualy-driver strong,
+.qualy-driver small,
+.qualy-time strong,
+.qualy-time small {
+  display: block;
+}
+
+.qualy-driver strong {
+  color: #f5f7fa;
+  font-size: 15px;
+}
+
+.qualy-driver small {
+  margin-top: 2px;
+  overflow: hidden;
+  color: #8490a0;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qualy-time strong {
+  color: #e0e5ea;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.qualy-time small {
+  margin-top: 2px;
+  color: #7b8797;
+  font-size: 10px;
+}
+
+.qualy-prob {
+  color: #cfd6dd;
+  font-size: 11px;
+  text-align: center;
+}
+
+.qualy-actual {
+  display: inline-grid;
+  place-items: center;
+  justify-self: center;
+  min-width: 34px;
+  height: 27px;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 7px;
+  color: #98a4b3;
+  background: rgba(255,255,255,.02);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.qualy-actual.exact {
+  color: #00f5d4;
+  border-color: rgba(0,245,212,.22);
+  background: rgba(0,245,212,.045);
+}
+
+.qualy-driver-card {
+  position: sticky;
+  top: 92px;
+  padding: 18px;
+  border-color: color-mix(in srgb,var(--driver-color) 25%,rgba(255,255,255,.07));
+  background:
+    radial-gradient(circle at 100% 0%,color-mix(in srgb,var(--driver-color) 11%,transparent),transparent 36%),
+    rgba(8,11,14,.97);
+}
+
+.qualy-driver-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--driver-color);
+  box-shadow: 0 0 14px var(--driver-color);
+}
+
+.qualy-driver-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.qualy-driver-card-head > div:first-child > span {
+  color: #758295;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.qualy-driver-card-head h2 {
+  margin: 5px 0 0;
+  color: #f5f7fa;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.qualy-driver-card-head p {
+  margin: 5px 0 0;
+  color: #8490a0;
+  font-size: 11px;
+}
+
+.qualy-driver-card-head > div:last-child {
+  text-align: right;
+}
+
+.qualy-driver-card-head > div:last-child strong {
+  display: block;
+  color: var(--driver-color);
+  font-size: 25px;
+}
+
+.qualy-driver-card-head > div:last-child span {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.qualy-prob-grid {
+  display: grid;
+  grid-template-columns: repeat(4,1fr);
+  gap: 6px;
+  margin-top: 16px;
+}
+
+.qualy-prob-grid > div {
+  padding: 9px 6px;
+  border: 1px solid rgba(255,255,255,.055);
+  border-radius: 9px;
+  background: rgba(255,255,255,.018);
+  text-align: center;
+}
+
+.qualy-prob-grid span,
+.qualy-prob-grid strong {
+  display: block;
+}
+
+.qualy-prob-grid span {
+  color: #758193;
+  font-size: 9px;
+}
+
+.qualy-prob-grid strong {
+  margin-top: 4px;
+  color: #f4f7f9;
+  font-size: 16px;
+}
+
+.qualy-score-card,
+.qualy-factors {
+  margin-top: 14px;
+  padding: 13px;
+  border: 1px solid rgba(255,255,255,.055);
+  border-radius: 12px;
+  background: rgba(255,255,255,.014);
+}
+
+.qualy-score-card > span,
+.qualy-factors > span {
+  display: block;
+  margin-bottom: 10px;
+  color: #8290a0;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.qualy-score-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0,1fr) 28px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.qualy-score-row > span,
+.qualy-score-row > strong {
+  color: #9aa6b5;
+  font-size: 10px;
+}
+
+.qualy-score-row > strong { text-align: right; }
+
+.qualy-score-row > i {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(255,255,255,.06);
+}
+
+.qualy-score-row > i b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--driver-color);
+}
+
+.qualy-factors > div {
+  display: grid;
+  grid-template-columns: 7px 1fr;
+  gap: 8px;
+  align-items: start;
+  margin-top: 8px;
+}
+
+.qualy-factors > div i {
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #7f8b9c;
+}
+
+.qualy-factors > div.positive i { background: #00f5d4; }
+.qualy-factors > div.negative i { background: #ff3157; }
+.qualy-factors > div.warning i { background: #ff9f43; }
+
+.qualy-factors p {
+  margin: 0;
+  color: #94a0af;
+  font-size: 11px;
+  line-height: 1.48;
+}
+
+.qualy-detail-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,.055);
+}
+
+.qualy-detail-foot span {
+  color: #758193;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.qualy-detail-foot strong {
+  color: #dfe4e9;
+  font-size: 10px;
+}
+
+.qualy-method-card {
+  display: grid;
+  grid-template-columns: 1fr .8fr;
+  gap: 28px;
+  margin-top: 12px;
+  padding: 22px;
+}
+
+.qualy-method-card h2 {
+  margin: 6px 0 0;
+  font-size: 21px;
+}
+
+.qualy-method-card p {
+  margin: 9px 0 0;
+  color: #8794a4;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.qualy-method-features {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.qualy-method-features > span {
+  grid-column: 1 / -1;
+}
+
+.qualy-method-features strong {
+  padding: 9px 10px;
+  border: 1px solid rgba(255,255,255,.055);
+  border-radius: 9px;
+  color: #aab4bf;
+  background: rgba(255,255,255,.015);
+  font-size: 10px;
+}
+
+.qualy-disclaimer {
+  margin: 14px 5px 0;
+  color: #707c8c;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+@media (max-width: 1100px) {
+  .qualy-main-grid { grid-template-columns: 1fr; }
+  .qualy-driver-card { position: static; }
+  .qualy-status-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+
+@media (max-width: 820px) {
+  .qualy-page {
+    width: min(100% - 24px,1380px);
+    padding-top: 28px;
+  }
+
+  .qualy-hero,
+  .qualy-backtest {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .qualy-model-chip { width: 100%; }
+  .qualy-control-card { grid-template-columns: 1fr; }
+  .qualy-run { width: 100%; }
+  .qualy-ranking-card { overflow-x: auto; }
+
+  .qualy-ranking-head,
+  .qualy-ranking > button {
+    min-width: 710px;
+  }
+
+  .qualy-method-card { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 560px) {
+  .qualy-status-grid { grid-template-columns: 1fr; }
+  .qualy-prob-grid { grid-template-columns: repeat(2,1fr); }
+  .qualy-method-features { grid-template-columns: 1fr; }
+  .qualy-method-features > span { grid-column: auto; }
+}
