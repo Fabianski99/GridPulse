@@ -777,3 +777,61 @@
   .qualy-method-features { grid-template-columns: 1fr; }
   .qualy-method-features > span { grid-column: auto; }
 }
+
+
+/* ============================================================
+   QUALY PREDICTOR · CALIDAD DE DATOS
+============================================================ */
+
+.qualy-data-quality {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0 22px;
+}
+
+.qualy-data-quality article {
+  min-width: 0;
+  padding: 15px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.065);
+  border-radius: 15px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.012));
+}
+
+.qualy-data-quality span {
+  display: block;
+  color: #7e8a9b;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.55px;
+  text-transform: uppercase;
+}
+
+.qualy-data-quality strong {
+  display: block;
+  margin-top: 7px;
+  color: #f3f6f8;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.qualy-data-quality small {
+  display: block;
+  margin-top: 6px;
+  color: #7f8b9c;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+@media (max-width: 1050px) {
+  .qualy-data-quality {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .qualy-data-quality {
+    grid-template-columns: 1fr;
+  }
+}
