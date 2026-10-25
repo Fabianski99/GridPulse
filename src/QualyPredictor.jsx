@@ -3,18 +3,21 @@ import "./QualyPredictor.css";
 
 const OPENF1 = "https://api.openf1.org/v1";
 const YEARS = [2025, 2026];
-const TRAINING_EVENTS = 6;
+const TRAINING_EVENTS = 5;
 const REQUEST_GAP_MS = 430;
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const FEATURE_KEYS = [
-  "practiceGap",
+  "qualyPaceGap",
   "practicePosition",
-  "practiceLaps",
+  "shortRunConfidence",
+  "longRunGap",
+  "teammateDelta",
+  "trackEvolutionExposure",
   "driverFormGap",
   "teamFormGap",
   "trackFitGap",
   "driverFormPosition",
-  "practiceQuality",
+  "practiceCoverage",
 ];
 
 const TRACK_PROFILES = {
@@ -185,10 +188,13 @@ function trackProfile(meeting) {
   return found ? found[1] : "balanced";
 }
 
-function practiceQuality(name) {
+
+function practiceSessionWeight(name, index, total) {
+  if (total <= 1) return 1;
   if (/Practice 3/i.test(name || "")) return 1;
-  if (/Practice 2/i.test(name || "")) return 0.82;
-  return 0.62;
+  if (/Practice 2/i.test(name || "")) return 0.72;
+  if (/Practice 1/i.test(name || "")) return 0.48;
+  return 0.45 + (index / Math.max(1, total - 1)) * 0.45;
 }
 
 function groupMeetings(sessions) {
@@ -218,10 +224,13 @@ function groupMeetings(sessions) {
       const sessionsSorted = [...meeting.sessions].sort(
         (a, b) => new Date(a.date_start) - new Date(b.date_start)
       );
+
       return {
         ...meeting,
         sessions: sessionsSorted,
-        startDate: Math.min(...sessionsSorted.map((item) => new Date(item.date_start).getTime())),
+        startDate: Math.min(
+          ...sessionsSorted.map((item) => new Date(item.date_start).getTime())
+        ),
       };
     })
     .sort((a, b) => a.startDate - b.startDate);
@@ -236,7 +245,7 @@ function qualifyingSession(meeting) {
   );
 }
 
-function practicesBeforeQualy(meeting) {
+function practicesBeforeQualy(meeting, target = false) {
   const qualifying = qualifyingSession(meeting);
   const qualifyingStart = qualifying
     ? new Date(qualifying.date_start).getTime()
@@ -247,19 +256,10 @@ function practicesBeforeQualy(meeting) {
       (session) =>
         session.session_type === "Practice" &&
         !session.is_cancelled &&
-        new Date(session.date_end).getTime() < qualifyingStart
+        new Date(session.date_end).getTime() < qualifyingStart &&
+        (!target || new Date(session.date_end).getTime() <= Date.now())
     )
     .sort((a, b) => new Date(a.date_end) - new Date(b.date_end));
-}
-
-function choosePractice(meeting, target) {
-  let sessions = practicesBeforeQualy(meeting);
-  if (target) {
-    sessions = sessions.filter(
-      (session) => new Date(session.date_end).getTime() <= Date.now()
-    );
-  }
-  return sessions[sessions.length - 1] || null;
 }
 
 function cleanResults(rows) {
@@ -278,11 +278,301 @@ function cleanResults(rows) {
     );
 }
 
+function stintForLap(stints, driverNumber, lapNumber) {
+  return (stints || []).find(
+    (stint) =>
+      Number(stint.driver_number) === Number(driverNumber) &&
+      Number(lapNumber) >= Number(stint.lap_start) &&
+      Number(lapNumber) <= Number(stint.lap_end)
+  );
+}
+
+function compoundWeight(compound) {
+  const value = String(compound || "").toUpperCase();
+  if (value === "SOFT") return 1;
+  if (value === "MEDIUM") return 0.7;
+  if (value === "HARD") return 0.45;
+  if (value === "INTERMEDIATE") return 0.32;
+  if (value === "WET") return 0.2;
+  return 0.5;
+}
+
+function estimateTrackEvolution(laps, session) {
+  const sessionStart = new Date(session.date_start).getTime();
+  const sessionEnd = new Date(session.date_end).getTime();
+  const duration = Math.max(1, sessionEnd - sessionStart);
+
+  const clean = (laps || [])
+    .filter(
+      (lap) =>
+        !lap.is_pit_out_lap &&
+        Number.isFinite(safeNumber(lap.lap_duration)) &&
+        Number.isFinite(new Date(lap.date_start).getTime())
+    )
+    .map((lap) => ({
+      time: Number(lap.lap_duration),
+      progress: clamp(
+        (new Date(lap.date_start).getTime() - sessionStart) / duration,
+        0,
+        1
+      ),
+    }));
+
+  if (clean.length < 18) return 0;
+
+  const best = Math.min(...clean.map((lap) => lap.time));
+  const representative = clean.filter((lap) => lap.time <= best * 1.08);
+
+  const early = representative
+    .filter((lap) => lap.progress <= 0.38)
+    .map((lap) => lap.time)
+    .sort((a, b) => a - b)
+    .slice(0, 8);
+
+  const late = representative
+    .filter((lap) => lap.progress >= 0.62)
+    .map((lap) => lap.time)
+    .sort((a, b) => a - b)
+    .slice(0, 8);
+
+  if (early.length < 3 || late.length < 3) return 0;
+
+  return clamp(median(early, 0) - median(late, 0), -2.5, 2.5);
+}
+
+function analyzePracticeSession(session, laps, stints, drivers) {
+  const driverInfo = new Map(
+    (drivers || []).map((driver) => [Number(driver.driver_number), driver])
+  );
+
+  const sessionStart = new Date(session.date_start).getTime();
+  const sessionEnd = new Date(session.date_end).getTime();
+  const sessionDuration = Math.max(1, sessionEnd - sessionStart);
+  const evolution = estimateTrackEvolution(laps, session);
+
+  const clean = (laps || [])
+    .filter(
+      (lap) =>
+        !lap.is_pit_out_lap &&
+        Number.isFinite(safeNumber(lap.lap_duration)) &&
+        Number.isFinite(safeNumber(lap.driver_number)) &&
+        Number.isFinite(safeNumber(lap.lap_number))
+    )
+    .map((lap) => {
+      const driverNumber = Number(lap.driver_number);
+      const lapNumber = Number(lap.lap_number);
+      const stint = stintForLap(stints, driverNumber, lapNumber);
+      const start = safeNumber(stint && stint.lap_start, lapNumber);
+      const end = safeNumber(stint && stint.lap_end, lapNumber);
+      const stintLength = Math.max(1, end - start + 1);
+      const tyreAge =
+        safeNumber(stint && stint.tyre_age_at_start, 0) +
+        Math.max(0, lapNumber - start);
+      const progress = clamp(
+        (new Date(lap.date_start).getTime() - sessionStart) / sessionDuration,
+        0,
+        1
+      );
+
+      return {
+        ...lap,
+        driverNumber,
+        lapNumber,
+        lapDuration: Number(lap.lap_duration),
+        stint,
+        stintLength,
+        tyreAge,
+        compound: String(stint && stint.compound || "UNKNOWN").toUpperCase(),
+        progress,
+        adjustedDuration:
+          Number(lap.lap_duration) - evolution * (1 - progress),
+        speedTrap: safeNumber(lap.st_speed),
+      };
+    });
+
+  if (!clean.length) {
+    return {
+      session,
+      evolution,
+      byDriver: new Map(),
+      leaderQualy: null,
+      leaderLongRun: null,
+    };
+  }
+
+  const grouped = new Map();
+
+  clean.forEach((lap) => {
+    if (!grouped.has(lap.driverNumber)) grouped.set(lap.driverNumber, []);
+    grouped.get(lap.driverNumber).push(lap);
+  });
+
+  const raw = new Map();
+
+  grouped.forEach((driverLaps, driverNumber) => {
+    const ordered = [...driverLaps].sort((a, b) => a.lapNumber - b.lapNumber);
+    const fastest = Math.min(...ordered.map((lap) => lap.adjustedDuration));
+
+    let candidates = ordered.filter((lap) => {
+      const shortRun = lap.stintLength <= 4;
+      const suitableTyre =
+        lap.compound === "SOFT" ||
+        (lap.compound === "MEDIUM" && lap.tyreAge <= 2);
+
+      return (
+        lap.adjustedDuration <= fastest * 1.018 &&
+        lap.tyreAge <= 4 &&
+        (shortRun || suitableTyre)
+      );
+    });
+
+    if (!candidates.length) {
+      candidates = [...ordered]
+        .sort((a, b) => a.adjustedDuration - b.adjustedDuration)
+        .slice(0, 2);
+    }
+
+    const qualyLap = [...candidates].sort((a, b) => {
+      const scoreA =
+        a.adjustedDuration +
+        (1 - compoundWeight(a.compound)) * 0.35 +
+        Math.max(0, a.tyreAge - 1) * 0.05 +
+        Math.max(0, a.stintLength - 4) * 0.035;
+
+      const scoreB =
+        b.adjustedDuration +
+        (1 - compoundWeight(b.compound)) * 0.35 +
+        Math.max(0, b.tyreAge - 1) * 0.05 +
+        Math.max(0, b.stintLength - 4) * 0.035;
+
+      return scoreA - scoreB;
+    })[0];
+
+    const shortRunConfidence = qualyLap
+      ? clamp(
+          0.18 +
+            compoundWeight(qualyLap.compound) * 0.42 +
+            (qualyLap.tyreAge <= 1 ? 0.18 : qualyLap.tyreAge <= 3 ? 0.1 : 0) +
+            (qualyLap.stintLength <= 4 ? 0.22 : 0.05),
+          0.15,
+          1
+        )
+      : 0.15;
+
+    const longStintGroups = new Map();
+
+    ordered.forEach((lap) => {
+      if (!lap.stint || lap.stintLength < 5) return;
+      const key = String(lap.stint.stint_number || lap.stint.lap_start || 0);
+      if (!longStintGroups.has(key)) longStintGroups.set(key, []);
+      longStintGroups.get(key).push(lap);
+    });
+
+    const longRunCandidates = [];
+
+    longStintGroups.forEach((stintLaps) => {
+      if (stintLaps.length < 4) return;
+
+      const sorted = [...stintLaps].sort((a, b) => a.lapNumber - b.lapNumber);
+      const middle = sorted.length > 5 ? sorted.slice(1, -1) : sorted;
+      const med = median(middle.map((lap) => lap.lapDuration), null);
+      if (!Number.isFinite(med)) return;
+
+      const representative = middle
+        .filter((lap) => lap.lapDuration <= med * 1.04)
+        .map((lap) => lap.lapDuration);
+
+      if (representative.length >= 3) {
+        longRunCandidates.push(median(representative, med));
+      }
+    });
+
+    raw.set(driverNumber, {
+      driverNumber,
+      driver: driverInfo.get(driverNumber),
+      qualyDuration: qualyLap ? qualyLap.adjustedDuration : fastest,
+      qualyRawDuration: qualyLap ? qualyLap.lapDuration : fastest,
+      selectedProgress: qualyLap ? qualyLap.progress : 0.5,
+      selectedCompound: qualyLap ? qualyLap.compound : "UNKNOWN",
+      selectedTyreAge: qualyLap ? qualyLap.tyreAge : null,
+      selectedStintLength: qualyLap ? qualyLap.stintLength : null,
+      shortRunConfidence,
+      longRunDuration: longRunCandidates.length
+        ? Math.min(...longRunCandidates)
+        : null,
+      cleanLaps: ordered.length,
+      topSpeed: Math.max(
+        ...ordered.map((lap) => lap.speedTrap || 0)
+      ),
+    });
+  });
+
+  const qualyValues = [...raw.values()]
+    .map((item) => item.qualyDuration)
+    .filter(Number.isFinite);
+  const longRunValues = [...raw.values()]
+    .map((item) => item.longRunDuration)
+    .filter(Number.isFinite);
+
+  const leaderQualy = qualyValues.length ? Math.min(...qualyValues) : null;
+  const leaderLongRun = longRunValues.length ? Math.min(...longRunValues) : null;
+
+  const byDriver = new Map();
+
+  raw.forEach((item, driverNumber) => {
+    byDriver.set(driverNumber, {
+      ...item,
+      qualyGap:
+        Number.isFinite(leaderQualy) && Number.isFinite(item.qualyDuration)
+          ? Math.max(0, item.qualyDuration - leaderQualy)
+          : null,
+      longRunGap:
+        Number.isFinite(leaderLongRun) && Number.isFinite(item.longRunDuration)
+          ? Math.max(0, item.longRunDuration - leaderLongRun)
+          : null,
+      trackEvolutionExposure:
+        evolution * Math.max(0, 1 - item.selectedProgress),
+      teammateDelta: 0,
+    });
+  });
+
+  const teams = new Map();
+
+  byDriver.forEach((item) => {
+    const team = item.driver && item.driver.team_name;
+    if (!team) return;
+    if (!teams.has(team)) teams.set(team, []);
+    teams.get(team).push(item);
+  });
+
+  teams.forEach((items) => {
+    if (items.length < 2) return;
+
+    items.forEach((item) => {
+      const teammate = items
+        .filter((other) => other.driverNumber !== item.driverNumber)
+        .sort((a, b) => a.qualyGap - b.qualyGap)[0];
+
+      if (teammate && Number.isFinite(teammate.qualyGap)) {
+        item.teammateDelta = item.qualyGap - teammate.qualyGap;
+      }
+    });
+  });
+
+  return {
+    session,
+    evolution,
+    byDriver,
+    leaderQualy,
+    leaderLongRun,
+  };
+}
+
 async function loadBundle(meeting, target) {
-  const practice = choosePractice(meeting, target);
+  const practices = practicesBeforeQualy(meeting, !!target);
   const qualifying = qualifyingSession(meeting);
 
-  if (!practice || !qualifying) {
+  if (!practices.length || !qualifying) {
     throw new Error(
       target
         ? "Este GP todavía no tiene una práctica utilizable antes de clasificación."
@@ -290,45 +580,166 @@ async function loadBundle(meeting, target) {
     );
   }
 
+  const latestPractice = practices[practices.length - 1];
+  const drivers = await openF1(
+    "drivers",
+    { session_key: latestPractice.session_key },
+    false
+  );
+
+  const analyses = [];
+
+  for (const practice of practices) {
+    const [laps, stints] = await Promise.all([
+      openF1("laps", { session_key: practice.session_key }, false),
+      openF1("stints", { session_key: practice.session_key }, false),
+    ]);
+
+    analyses.push(
+      analyzePracticeSession(practice, laps, stints, drivers)
+    );
+  }
+
   const qualifyingFinished =
     new Date(qualifying.date_end).getTime() <= Date.now();
 
-  const [practiceRows, drivers, qualifyingRows] = await Promise.all([
-    openF1("session_result", { session_key: practice.session_key }, false),
-    openF1("drivers", { session_key: practice.session_key }, false),
+  const qualifyingRows =
     qualifyingFinished || !target
-      ? openF1("session_result", { session_key: qualifying.session_key }, !!target)
-      : Promise.resolve([]),
-  ]);
+      ? cleanResults(
+          await openF1(
+            "session_result",
+            { session_key: qualifying.session_key },
+            !!target
+          )
+        )
+      : [];
 
   return {
     meeting,
-    practice,
+    practices,
+    practice: latestPractice,
+    practiceAnalyses: analyses,
     qualifying,
-    practiceRows: cleanResults(practiceRows),
-    qualifyingRows: cleanResults(qualifyingRows),
+    qualifyingRows,
     drivers,
     profile: trackProfile(meeting),
   };
 }
 
 function practiceMetrics(bundle) {
-  if (!bundle.practiceRows.length) return null;
-  const leader = Math.min(...bundle.practiceRows.map((row) => row.durationValue));
+  const analyses = bundle.practiceAnalyses || [];
+  if (!analyses.length) return null;
+
+  const totals = new Map();
+  let totalWeight = 0;
+  let evolutionWeighted = 0;
+
+  analyses.forEach((analysis, index) => {
+    const weight = practiceSessionWeight(
+      analysis.session.session_name,
+      index,
+      analyses.length
+    );
+
+    totalWeight += weight;
+    evolutionWeighted += analysis.evolution * weight;
+
+    analysis.byDriver.forEach((item, driverNumber) => {
+      if (!totals.has(driverNumber)) {
+        totals.set(driverNumber, {
+          weight: 0,
+          qualyPaceGap: 0,
+          longRunGap: 0,
+          longRunWeight: 0,
+          shortRunConfidence: 0,
+          teammateDelta: 0,
+          trackEvolutionExposure: 0,
+          practiceLaps: 0,
+          topSpeed: 0,
+          latestRawDuration: null,
+          selectedCompound: "UNKNOWN",
+          selectedTyreAge: null,
+          driver: item.driver,
+        });
+      }
+
+      const target = totals.get(driverNumber);
+
+      target.weight += weight;
+      target.qualyPaceGap += item.qualyGap * weight;
+      target.shortRunConfidence += item.shortRunConfidence * weight;
+      target.teammateDelta += item.teammateDelta * weight;
+      target.trackEvolutionExposure +=
+        item.trackEvolutionExposure * weight;
+      target.practiceLaps += item.cleanLaps * weight;
+      target.topSpeed = Math.max(target.topSpeed, item.topSpeed || 0);
+
+      if (Number.isFinite(item.longRunGap)) {
+        target.longRunGap += item.longRunGap * weight;
+        target.longRunWeight += weight;
+      }
+
+      if (index === analyses.length - 1) {
+        target.latestRawDuration = item.qualyRawDuration;
+        target.selectedCompound = item.selectedCompound;
+        target.selectedTyreAge = item.selectedTyreAge;
+      }
+    });
+  });
+
+  const rows = [];
+
+  totals.forEach((item, driverNumber) => {
+    const weight = Math.max(item.weight, 0.001);
+
+    rows.push({
+      driverNumber,
+      driver: item.driver,
+      qualyPaceGap: item.qualyPaceGap / weight,
+      longRunGap:
+        item.longRunWeight > 0
+          ? item.longRunGap / item.longRunWeight
+          : null,
+      shortRunConfidence: item.shortRunConfidence / weight,
+      teammateDelta: item.teammateDelta / weight,
+      trackEvolutionExposure:
+        item.trackEvolutionExposure / weight,
+      practiceLaps: item.practiceLaps / weight,
+      topSpeed: item.topSpeed,
+      latestRawDuration: item.latestRawDuration,
+      selectedCompound: item.selectedCompound,
+      selectedTyreAge: item.selectedTyreAge,
+      practiceCoverage: clamp(item.weight / Math.max(totalWeight, 0.001), 0, 1),
+    });
+  });
+
+  rows.sort((a, b) => a.qualyPaceGap - b.qualyPaceGap);
+
+  rows.forEach((row, index) => {
+    row.position = index + 1;
+  });
+
+  const latestLeader = analyses[analyses.length - 1].leaderQualy;
+  const sessionNames = analyses.map(
+    (analysis) => analysis.session.session_name
+  );
 
   return {
-    leader,
-    byDriver: new Map(
-      bundle.practiceRows.map((row) => [
-        Number(row.driver_number),
-        {
-          gap: Math.max(0, row.durationValue - leader),
-          position: row.positionValue,
-          laps: row.lapsValue,
-          duration: row.durationValue,
-        },
-      ])
-    ),
+    leader:
+      Number.isFinite(latestLeader)
+        ? latestLeader
+        : Math.min(
+            ...rows
+              .map((row) => row.latestRawDuration)
+              .filter(Number.isFinite)
+          ),
+    byDriver: new Map(rows.map((row) => [row.driverNumber, row])),
+    rows,
+    sessionNames,
+    evolution:
+      totalWeight > 0 ? evolutionWeighted / totalWeight : 0,
+    shortRuns: rows.filter((row) => row.shortRunConfidence >= 0.62).length,
+    longRuns: rows.filter((row) => Number.isFinite(row.longRunGap)).length,
   };
 }
 
@@ -337,7 +748,9 @@ function qualifyingMetrics(bundle) {
 
   const pole =
     bundle.qualifyingRows.find((row) => row.positionValue === 1) ||
-    [...bundle.qualifyingRows].sort((a, b) => a.positionValue - b.positionValue)[0];
+    [...bundle.qualifyingRows].sort(
+      (a, b) => a.positionValue - b.positionValue
+    )[0];
 
   if (!pole || !Number.isFinite(pole.durationValue)) return null;
 
@@ -387,36 +800,50 @@ function buildTraining(bundles) {
     const globalGap = average(globalGaps, 0.85);
     const globalPosition = average(globalPositions, 10.5);
 
-    bundle.practiceRows.forEach((row) => {
-      const number = Number(row.driver_number);
-      const p = practice.byDriver.get(number);
+    practice.rows.forEach((p) => {
+      const number = Number(p.driverNumber);
       const target = qualifying.byDriver.get(number);
-      const driver = drivers.get(number);
+      const driver = drivers.get(number) || p.driver;
 
       if (!p || !target || !driver || !driver.team_name) return;
-      if (p.gap > 6 || target.gap > 5) return;
+      if (p.qualyPaceGap > 5 || target.gap > 5) return;
 
       const team = driver.team_name;
       const profileKey = team + "::" + bundle.profile;
+      const teamFallback = recentAverage(teamGap, team, globalGap);
 
       rows.push({
         eventIndex,
         driverNumber: number,
         driver,
         team,
-        practiceGap: p.gap,
+        qualyPaceGap: p.qualyPaceGap,
         practicePosition: (p.position - 1) / 21,
-        practiceLaps: clamp(p.laps / 30, 0, 1.4),
+        shortRunConfidence: p.shortRunConfidence,
+        longRunGap: Number.isFinite(p.longRunGap)
+          ? p.longRunGap
+          : teamFallback,
+        teammateDelta: clamp(p.teammateDelta, -1.2, 1.2),
+        trackEvolutionExposure: clamp(
+          p.trackEvolutionExposure,
+          -2.5,
+          2.5
+        ),
         driverFormGap: recentAverage(driverGap, number, globalGap),
-        teamFormGap: recentAverage(teamGap, team, globalGap),
+        teamFormGap: teamFallback,
         trackFitGap: recentAverage(
           teamProfileGap,
           profileKey,
-          recentAverage(teamGap, team, globalGap)
+          teamFallback
         ),
         driverFormPosition:
           recentAverage(driverPosition, number, globalPosition) / 20,
-        practiceQuality: practiceQuality(bundle.practice.session_name),
+        practiceCoverage: p.practiceCoverage,
+        practiceLaps: clamp(p.practiceLaps / 30, 0, 1.5),
+        practicePositionRaw: p.position,
+        topSpeed: p.topSpeed,
+        selectedCompound: p.selectedCompound,
+        selectedTyreAge: p.selectedTyreAge,
         targetGap: target.gap,
         targetPosition: target.position,
       });
@@ -461,39 +888,47 @@ function makeTargetRows(bundle, state) {
     bundle.drivers.map((driver) => [Number(driver.driver_number), driver])
   );
 
-  return bundle.practiceRows
-    .map((row) => {
-      const number = Number(row.driver_number);
-      const p = practice.byDriver.get(number);
-      const driver = drivers.get(number);
-      if (!p || !driver || !driver.team_name) return null;
+  return practice.rows
+    .map((p) => {
+      const number = Number(p.driverNumber);
+      const driver = drivers.get(number) || p.driver;
+      if (!driver || !driver.team_name) return null;
 
       const team = driver.team_name;
       const profileKey = team + "::" + bundle.profile;
+      const teamFallback = recentAverage(
+        state.teamGap,
+        team,
+        state.globalGap
+      );
 
       return {
         driverNumber: number,
         driver,
         team,
-        practiceGap: p.gap,
+        qualyPaceGap: p.qualyPaceGap,
         practicePosition: (p.position - 1) / 21,
         practicePositionRaw: p.position,
-        practiceLaps: clamp(p.laps / 30, 0, 1.4),
-        practiceDuration: p.duration,
+        shortRunConfidence: p.shortRunConfidence,
+        longRunGap: Number.isFinite(p.longRunGap)
+          ? p.longRunGap
+          : teamFallback,
+        teammateDelta: clamp(p.teammateDelta, -1.2, 1.2),
+        trackEvolutionExposure: clamp(
+          p.trackEvolutionExposure,
+          -2.5,
+          2.5
+        ),
         driverFormGap: recentAverage(
           state.driverGap,
           number,
           state.globalGap
         ),
-        teamFormGap: recentAverage(
-          state.teamGap,
-          team,
-          state.globalGap
-        ),
+        teamFormGap: teamFallback,
         trackFitGap: recentAverage(
           state.teamProfileGap,
           profileKey,
-          recentAverage(state.teamGap, team, state.globalGap)
+          teamFallback
         ),
         driverFormPosition:
           recentAverage(
@@ -501,7 +936,12 @@ function makeTargetRows(bundle, state) {
             number,
             state.globalPosition
           ) / 20,
-        practiceQuality: practiceQuality(bundle.practice.session_name),
+        practiceCoverage: p.practiceCoverage,
+        practiceLaps: clamp(p.practiceLaps / 30, 0, 1.5),
+        topSpeed: p.topSpeed,
+        selectedCompound: p.selectedCompound,
+        selectedTyreAge: p.selectedTyreAge,
+        practiceDuration: p.latestRawDuration,
       };
     })
     .filter(Boolean);
