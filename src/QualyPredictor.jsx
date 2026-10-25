@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import "./QualyPredictor.css";
 
 const OPENF1 = "/api/openf1";
+const JOLPICA = "https://api.jolpi.ca/ergast/f1";
 const YEARS = [2025, 2026];
 const TRAINING_EVENTS = 5;
 const REQUEST_GAP_MS = 1350;
@@ -59,6 +60,7 @@ const PROFILE_LABELS = {
 };
 
 const RESPONSE_CACHE = new Map();
+const QUALY_HISTORY_CACHE = new Map();
 const INFLIGHT = new Map();
 let requestQueue = Promise.resolve();
 let lastRequestAt = 0;
@@ -210,6 +212,329 @@ async function openF1(endpoint, params, optional) {
 
   INFLIGHT.set(url, promise);
   return promise;
+}
+
+
+async function fetchSeasonQualifying(year) {
+  const cacheKey = String(year);
+  const cached = QUALY_HISTORY_CACHE.get(cacheKey);
+
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.data;
+  }
+
+  const response = await fetch(
+    JOLPICA + "/" + year + "/qualifying.json?limit=2000"
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      "No fue posible recuperar el historial de clasificación de " + year + "."
+    );
+  }
+
+  const payload = await response.json();
+  const races =
+    payload &&
+    payload.MRData &&
+    payload.MRData.RaceTable &&
+    Array.isArray(payload.MRData.RaceTable.Races)
+      ? payload.MRData.RaceTable.Races
+      : [];
+
+  QUALY_HISTORY_CACHE.set(cacheKey, {
+    data: races,
+    expiresAt: Date.now() + CACHE_TTL_MS,
+  });
+
+  return races;
+}
+
+async function loadQualifyingHistory() {
+  const groups = [];
+
+  for (const year of YEARS) {
+    try {
+      groups.push(...(await fetchSeasonQualifying(year)));
+    } catch {
+      // El predictor puede seguir funcionando sin este prior.
+    }
+  }
+
+  return groups;
+}
+
+function raceStartTimestamp(race) {
+  if (!race || !race.date) return null;
+
+  const value =
+    race.date +
+    (race.time ? "T" + race.time : "T12:00:00Z");
+
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function buildQualyPriors(races, cutoffTimestamp) {
+  const usable = (races || [])
+    .map((race) => ({
+      ...race,
+      timestamp: raceStartTimestamp(race),
+    }))
+    .filter(
+      (race) =>
+        Number.isFinite(race.timestamp) &&
+        race.timestamp < cutoffTimestamp &&
+        Array.isArray(race.QualifyingResults)
+    )
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .slice(-10);
+
+  const history = new Map();
+
+  usable.forEach((race) => {
+    const results = (race.QualifyingResults || [])
+      .map((result) => ({
+        code:
+          result &&
+          result.Driver &&
+          result.Driver.code
+            ? String(result.Driver.code).toUpperCase()
+            : null,
+        position: safeNumber(result && result.position),
+        constructor:
+          result &&
+          result.Constructor &&
+          (result.Constructor.constructorId || result.Constructor.name)
+            ? String(
+                result.Constructor.constructorId || result.Constructor.name
+              )
+            : null,
+      }))
+      .filter(
+        (result) =>
+          result.code &&
+          Number.isFinite(result.position) &&
+          result.position >= 1 &&
+          result.position <= 30
+      );
+
+    const teamGroups = new Map();
+
+    results.forEach((result) => {
+      if (!result.constructor) return;
+      if (!teamGroups.has(result.constructor)) {
+        teamGroups.set(result.constructor, []);
+      }
+      teamGroups.get(result.constructor).push(result);
+    });
+
+    results.forEach((result) => {
+      if (!history.has(result.code)) history.set(result.code, []);
+
+      const teammate = result.constructor
+        ? (teamGroups.get(result.constructor) || [])
+            .filter((item) => item.code !== result.code)
+            .sort(
+              (a, b) =>
+                Math.abs(a.position - result.position) -
+                Math.abs(b.position - result.position)
+            )[0]
+        : null;
+
+      history.get(result.code).push({
+        position: result.position,
+        teammateDelta: teammate
+          ? teammate.position - result.position
+          : null,
+        timestamp: race.timestamp,
+      });
+    });
+  });
+
+  const priors = new Map();
+
+  history.forEach((entries, code) => {
+    const recent = entries.slice(-8);
+    if (!recent.length) return;
+
+    let weightSum = 0;
+    let scoreSum = 0;
+    let positionSum = 0;
+    let poleWeight = 0;
+    let frontRowWeight = 0;
+    let q3Weight = 0;
+    let teammateWeight = 0;
+    let teammateWins = 0;
+    let teammateDeltaSum = 0;
+
+    recent.forEach((entry, index) => {
+      const age = recent.length - 1 - index;
+      const weight = Math.pow(0.78, age);
+      const positionScore = clamp(
+        1 - (entry.position - 1) / 19,
+        0,
+        1
+      );
+
+      const eventScore =
+        positionScore * 0.72 +
+        (entry.position <= 10 ? 0.1 : 0) +
+        (entry.position <= 2 ? 0.1 : 0) +
+        (entry.position === 1 ? 0.08 : 0);
+
+      weightSum += weight;
+      scoreSum += eventScore * weight;
+      positionSum += entry.position * weight;
+
+      if (entry.position === 1) poleWeight += weight;
+      if (entry.position <= 2) frontRowWeight += weight;
+      if (entry.position <= 10) q3Weight += weight;
+
+      if (Number.isFinite(entry.teammateDelta)) {
+        teammateWeight += weight;
+        teammateDeltaSum += entry.teammateDelta * weight;
+        if (entry.teammateDelta > 0) teammateWins += weight;
+      }
+    });
+
+    const lastThree = recent.slice(-3);
+    const previousThree = recent.slice(-6, -3);
+
+    const scoreOf = (entry) => {
+      const positionScore = clamp(
+        1 - (entry.position - 1) / 19,
+        0,
+        1
+      );
+
+      return (
+        positionScore * 0.72 +
+        (entry.position <= 10 ? 0.1 : 0) +
+        (entry.position <= 2 ? 0.1 : 0) +
+        (entry.position === 1 ? 0.08 : 0)
+      );
+    };
+
+    const momentum =
+      previousThree.length >= 2
+        ? average(lastThree.map(scoreOf), 0.5) -
+          average(previousThree.map(scoreOf), 0.5)
+        : 0;
+
+    const rawStrength =
+      weightSum > 0 ? scoreSum / weightSum : 0.5;
+
+    const sampleConfidence = clamp(recent.length / 5, 0.35, 1);
+    const teammateStrength =
+      teammateWeight > 0
+        ? clamp(
+            0.5 +
+              (teammateDeltaSum / teammateWeight) / 12 +
+              (teammateWins / teammateWeight - 0.5) * 0.18,
+            0,
+            1
+          )
+        : 0.5;
+
+    const strength = clamp(
+      (
+        rawStrength * 0.82 +
+        teammateStrength * 0.1 +
+        clamp(0.5 + momentum, 0, 1) * 0.08
+      ) *
+        sampleConfidence +
+        0.5 * (1 - sampleConfidence),
+      0,
+      1
+    );
+
+    priors.set(code, {
+      events: recent.length,
+      strength,
+      weightedPosition:
+        weightSum > 0 ? positionSum / weightSum : null,
+      poleRate: weightSum > 0 ? poleWeight / weightSum : 0,
+      frontRowRate:
+        weightSum > 0 ? frontRowWeight / weightSum : 0,
+      q3Rate: weightSum > 0 ? q3Weight / weightSum : 0,
+      teammateWinRate:
+        teammateWeight > 0 ? teammateWins / teammateWeight : null,
+      teammateDelta:
+        teammateWeight > 0
+          ? teammateDeltaSum / teammateWeight
+          : null,
+      momentum,
+    });
+  });
+
+  return priors;
+}
+
+function attachQualyPriors(rows, priors) {
+  return (rows || []).map((row) => {
+    const code =
+      row &&
+      row.driver &&
+      row.driver.name_acronym
+        ? String(row.driver.name_acronym).toUpperCase()
+        : null;
+
+    return {
+      ...row,
+      qualyPrior: code ? priors.get(code) || null : null,
+    };
+  });
+}
+
+function calibrateWithQualyPrior(predictions) {
+  const rows = predictions || [];
+  const strengths = rows
+    .map((row) => row.qualyPrior && row.qualyPrior.strength)
+    .filter(Number.isFinite);
+
+  if (!strengths.length) return rows;
+
+  const bestStrength = Math.max(...strengths);
+  const medianStrength = median(strengths, 0.5);
+
+  return rows.map((row) => {
+    const prior = row.qualyPrior;
+    const strength =
+      prior && Number.isFinite(prior.strength)
+        ? prior.strength
+        : medianStrength;
+
+    const priorGap = clamp(
+      (bestStrength - strength) * 1.35,
+      0,
+      1.4
+    );
+
+    const practiceConfidence = clamp(
+      row.shortRunConfidence || 0.45,
+      0.15,
+      1
+    );
+
+    const historyWeight = clamp(
+      0.18 + (1 - practiceConfidence) * 0.14,
+      0.18,
+      0.32
+    );
+
+    const calibrated =
+      row.predictedGap * (1 - historyWeight) +
+      priorGap * historyWeight;
+
+    return {
+      ...row,
+      prePriorGap: row.predictedGap,
+      qualyPriorGap: priorGap,
+      qualyPriorWeight: historyWeight,
+      predictedGap: clamp(calibrated, 0, 4.5),
+    };
+  });
 }
 
 function trackProfile(meeting) {
@@ -1347,6 +1672,36 @@ function buildFactors(item, predictions, practiceName, profileLabel) {
     });
   }
 
+  if (
+    item.qualyPrior &&
+    item.qualyPrior.events >= 3
+  ) {
+    if (item.qualyPrior.poleRate >= 0.22) {
+      factors.push({
+        type: "positive",
+        text:
+          "Forma reciente de qualy muy fuerte: pole en " +
+          Math.round(item.qualyPrior.poleRate * 100) +
+          "% ponderado de las últimas clasificaciones.",
+      });
+    } else if (item.qualyPrior.frontRowRate >= 0.42) {
+      factors.push({
+        type: "positive",
+        text:
+          "Alta frecuencia reciente de primera fila en clasificación.",
+      });
+    } else if (
+      item.qualyPrior.weightedPosition !== null &&
+      item.qualyPrior.weightedPosition >= 11
+    ) {
+      factors.push({
+        type: "negative",
+        text:
+          "El historial reciente de qualy todavía está fuera de la zona delantera.",
+      });
+    }
+  }
+
   if (item.teamFormGap <= teamMedian - 0.15) {
     factors.push({
       type: "positive",
@@ -1435,12 +1790,15 @@ function buildFactors(item, predictions, practiceName, profileLabel) {
   return factors.slice(0, 3);
 }
 
-function buildPrediction(targetBundle, historicalBundles) {
+function buildPrediction(targetBundle, historicalBundles, qualyPriors = new Map()) {
   const training = buildTraining(historicalBundles);
   const model = fitRidge(training.rows);
 
   const validation = temporalValidation(training);
-  const target = makeTargetRows(targetBundle, training.state);
+  const target = attachQualyPriors(
+    makeTargetRows(targetBundle, training.state),
+    qualyPriors
+  );
 
   if (!target.length) {
     throw new Error(
@@ -1456,6 +1814,8 @@ function buildPrediction(targetBundle, historicalBundles) {
       predictedGap: blendedPrediction(model, row),
     }))
     .filter((row) => Number.isFinite(row.predictedGap));
+
+  predictions = calibrateWithQualyPrior(predictions);
 
   const minimum = Math.min(...predictions.map((row) => row.predictedGap));
 
@@ -1543,9 +1903,18 @@ function buildPrediction(targetBundle, historicalBundles) {
         row.qualyPaceGap,
         predictions.map((item) => item.qualyPaceGap)
       ),
-      driver: percentileScore(
-        row.driverFormGap,
-        predictions.map((item) => item.driverFormGap)
+      driver: Math.round(
+        (
+          percentileScore(
+            row.driverFormGap,
+            predictions.map((item) => item.driverFormGap)
+          ) *
+            0.55 +
+          (row.qualyPrior && Number.isFinite(row.qualyPrior.strength)
+            ? row.qualyPrior.strength * 100
+            : 50) *
+            0.45
+        )
       ),
       car: percentileScore(
         row.teamFormGap,
@@ -1622,6 +1991,9 @@ function buildPrediction(targetBundle, historicalBundles) {
     trainingRows: training.rows.length,
     modelActive: Boolean(model),
     modelSamples: model ? model.sampleCount : 0,
+    qualyPriorCoverage: predictions.filter(
+      (row) => row.qualyPrior && row.qualyPrior.events >= 3
+    ).length,
     shortRuns: targetPractice ? targetPractice.shortRuns : 0,
     longRuns: targetPractice ? targetPractice.longRuns : 0,
     trackEvolution: targetPractice ? targetPractice.evolution : 0,
@@ -1760,9 +2132,21 @@ export default function QualyPredictor() {
 
       const targetBundle = await loadBundle(selectedMeeting, true);
 
+      setProgress("Leyendo la forma reciente de clasificación…");
+
+      const qualyHistory = await loadQualifyingHistory();
+      const qualyPriors = buildQualyPriors(
+        qualyHistory,
+        selectedMeeting.startDate
+      );
+
       setProgress("Entrenando Ridge Regression y simulando 450 escenarios…");
 
-      const result = buildPrediction(targetBundle, historicalBundles);
+      const result = buildPrediction(
+        targetBundle,
+        historicalBundles,
+        qualyPriors
+      );
       setPrediction(result);
       setSelectedDriver(result.predictions[0] && result.predictions[0].driverNumber);
     } catch (err) {
@@ -1920,8 +2304,10 @@ export default function QualyPredictor() {
 
             <article>
               <span>Lectura del modelo</span>
-              <strong>Short run + forma</strong>
-              <small>La práctica ya no se interpreta como una tabla de tiempos bruta</small>
+              <strong>Short run + qualy prior</strong>
+              <small>
+                {prediction.qualyPriorCoverage} pilotos con historial reciente suficiente
+              </small>
             </article>
           </section>
 
@@ -2097,6 +2483,8 @@ export default function QualyPredictor() {
               <strong>Evolución de pista durante la práctica</strong>
               <strong>Forma y tendencia reciente del coche</strong>
               <strong>Comparación con el compañero</strong>
+              <strong>Historial reciente de pole / primera fila / Q3</strong>
+              <strong>Forma de qualy ponderada por recencia</strong>
               <strong>Encaje con circuitos similares</strong>
             </div>
           </section>
