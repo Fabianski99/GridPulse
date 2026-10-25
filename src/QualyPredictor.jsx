@@ -15,6 +15,7 @@ const FEATURE_KEYS = [
   "trackEvolutionExposure",
   "driverFormGap",
   "teamFormGap",
+  "teamTrend",
   "trackFitGap",
   "driverFormPosition",
   "practiceCoverage",
@@ -779,6 +780,23 @@ function recentAverage(map, key, fallback) {
   return average(map.get(key) || [], fallback);
 }
 
+function recentTrend(map, key) {
+  const values = map.get(key) || [];
+  if (values.length < 4) return 0;
+
+  const recent = values.slice(-2);
+  const previous = values.slice(-5, -2);
+
+  if (!previous.length) return 0;
+
+  // Negativo = el equipo está acercándose a la pole.
+  return clamp(
+    average(recent, 0) - average(previous, 0),
+    -0.8,
+    0.8
+  );
+}
+
 function buildTraining(bundles) {
   const driverGap = new Map();
   const driverPosition = new Map();
@@ -831,6 +849,7 @@ function buildTraining(bundles) {
         ),
         driverFormGap: recentAverage(driverGap, number, globalGap),
         teamFormGap: teamFallback,
+        teamTrend: recentTrend(teamGap, team),
         trackFitGap: recentAverage(
           teamProfileGap,
           profileKey,
@@ -925,6 +944,7 @@ function makeTargetRows(bundle, state) {
           state.globalGap
         ),
         teamFormGap: teamFallback,
+        teamTrend: recentTrend(state.teamGap, team),
         trackFitGap: recentAverage(
           state.teamProfileGap,
           profileKey,
@@ -1061,13 +1081,15 @@ function baselineGap(row) {
   const trackWeight = 0.1;
   const longRunWeight = 0.06;
   const teammateWeight = 0.08;
+  const evolutionWeight = 0.08;
   const total =
     practiceWeight +
     teamWeight +
     driverWeight +
     trackWeight +
     longRunWeight +
-    teammateWeight;
+    teammateWeight +
+    evolutionWeight;
 
   return Math.max(
     0,
@@ -1077,7 +1099,8 @@ function baselineGap(row) {
       row.driverFormGap * driverWeight +
       row.trackFitGap * trackWeight +
       longRun * longRunWeight +
-      Math.max(0, teammatePenalty) * teammateWeight
+      Math.max(0, teammatePenalty) * teammateWeight +
+      Math.max(0, row.teamFormGap + row.teamTrend) * evolutionWeight
     ) / total
   );
 }
@@ -1271,6 +1294,20 @@ function buildFactors(item, predictions, practiceName, profileLabel) {
       type: "negative",
       text:
         "La forma reciente del coche/equipo limita una subida artificial por una sola práctica.",
+    });
+  }
+
+  if (item.teamTrend <= -0.12) {
+    factors.push({
+      type: "positive",
+      text:
+        "El coche/equipo viene mejorando en clasificación durante los últimos GP.",
+    });
+  } else if (item.teamTrend >= 0.15) {
+    factors.push({
+      type: "negative",
+      text:
+        "La tendencia reciente del coche/equipo es peor que su media de las últimas carreras.",
     });
   }
 
@@ -1634,7 +1671,7 @@ export default function QualyPredictor() {
       }
 
       setProgress(
-        "Leyendo " + selectedMeeting.country_name + " y la última práctica disponible…"
+        "Leyendo " + selectedMeeting.country_name + ": prácticas, stints y vueltas representativas…"
       );
 
       const targetBundle = await loadBundle(selectedMeeting, true);
@@ -1662,8 +1699,9 @@ export default function QualyPredictor() {
           <span className="qualy-eyebrow">MODELO EXPERIMENTAL · 2026</span>
           <h1>Qualy Predictor</h1>
           <p>
-            Una primera estimación de clasificación basada en ritmo de prácticas,
-            forma reciente de piloto y equipo, y comportamiento en circuitos de perfil similar.
+            Predicción de clasificación que separa short runs y long runs,
+            corrige parte de la evolución de pista y combina la práctica con
+            la forma reciente del piloto, del coche y del equipo.
           </p>
         </div>
 
@@ -1738,9 +1776,9 @@ export default function QualyPredictor() {
         <>
           <section className="qualy-status-grid">
             <article>
-              <span>Práctica utilizada</span>
+              <span>Prácticas analizadas</span>
               <strong>{prediction.practiceName}</strong>
-              <small>Última práctica previa a qualy</small>
+              <small>{prediction.practiceSessions.length} sesiones previas a qualy</small>
             </article>
 
             <article>
@@ -1763,6 +1801,37 @@ export default function QualyPredictor() {
               <span>Confianza del modelo</span>
               <strong>{prediction.confidence}%</strong>
               <i><b style={{ width: prediction.confidence + "%" }} /></i>
+            </article>
+          </section>
+
+          <section className="qualy-data-quality">
+            <article>
+              <span>Short runs detectados</span>
+              <strong>{prediction.shortRuns}</strong>
+              <small>Vueltas rápidas con stint corto / neumático adecuado</small>
+            </article>
+
+            <article>
+              <span>Long runs detectados</span>
+              <strong>{prediction.longRuns}</strong>
+              <small>Tandas de 5+ vueltas usadas como señal secundaria del coche</small>
+            </article>
+
+            <article>
+              <span>Evolución de pista</span>
+              <strong>
+                {prediction.trackEvolution >= 0 ? "+" : ""}
+                {prediction.trackEvolution.toFixed(3)} s
+              </strong>
+              <small>
+                Mejora estimada del asfalto durante las prácticas analizadas
+              </small>
+            </article>
+
+            <article>
+              <span>Lectura del modelo</span>
+              <strong>Short run + forma</strong>
+              <small>La práctica ya no se interpreta como una tabla de tiempos bruta</small>
             </article>
           </section>
 
@@ -1932,10 +2001,12 @@ export default function QualyPredictor() {
 
             <div className="qualy-method-features">
               <span>Variables actuales</span>
-              <strong>Gap y posición en práctica</strong>
-              <strong>Volumen de vueltas</strong>
-              <strong>Forma reciente del piloto</strong>
-              <strong>Forma reciente del equipo</strong>
+              <strong>Short runs de vuelta rápida</strong>
+              <strong>Long runs separados del ritmo de qualy</strong>
+              <strong>Compuesto, edad de neumático y stint</strong>
+              <strong>Evolución de pista durante la práctica</strong>
+              <strong>Forma y tendencia reciente del coche</strong>
+              <strong>Comparación con el compañero</strong>
               <strong>Encaje con circuitos similares</strong>
             </div>
           </section>
