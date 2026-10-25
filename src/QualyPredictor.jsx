@@ -1634,7 +1634,7 @@ export default function QualyPredictor() {
           (meeting) =>
             meeting.startDate < selectedMeeting.startDate &&
             qualifyingSession(meeting) &&
-            choosePractice(meeting, false)
+            practicesBeforeQualy(meeting, false).length > 0
         )
         .slice(-TRAINING_EVENTS);
 
