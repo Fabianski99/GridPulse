@@ -1171,7 +1171,7 @@ function recentTrend(map, key) {
   );
 }
 
-function buildTraining(bundles) {
+function buildTraining(bundles, qualyHistory = []) {
   const driverGap = new Map();
   const driverPosition = new Map();
   const teamGap = new Map();
@@ -1189,8 +1189,14 @@ function buildTraining(bundles) {
       bundle.drivers.map((driver) => [Number(driver.driver_number), driver])
     );
 
+    const eventPriors = buildQualyPriors(
+      qualyHistory,
+      bundle.meeting.startDate
+    );
+
     const globalGap = average(globalGaps, 0.85);
     const globalPosition = average(globalPositions, 10.5);
+    const eventRows = [];
 
     practice.rows.forEach((p) => {
       const number = Number(p.driverNumber);
@@ -1203,8 +1209,11 @@ function buildTraining(bundles) {
       const team = driver.team_name;
       const profileKey = team + "::" + bundle.profile;
       const teamFallback = recentAverage(teamGap, team, globalGap);
+      const code = driver.name_acronym
+        ? String(driver.name_acronym).toUpperCase()
+        : null;
 
-      rows.push({
+      eventRows.push({
         eventIndex,
         driverNumber: number,
         driver,
@@ -1237,8 +1246,28 @@ function buildTraining(bundles) {
         topSpeed: p.topSpeed,
         selectedCompound: p.selectedCompound,
         selectedTyreAge: p.selectedTyreAge,
+        qualyPrior: code ? eventPriors.get(code) || null : null,
         targetGap: target.gap,
         targetPosition: target.position,
+      });
+    });
+
+    const calibratedBaseline = calibrateWithQualyPrior(
+      eventRows.map((row) => ({
+        ...row,
+        predictedGap: baselineGap(row),
+      }))
+    );
+
+    calibratedBaseline.forEach((row) => {
+      rows.push({
+        ...row,
+        historicalBaseGap: row.predictedGap,
+        residualTarget: clamp(
+          row.targetGap - row.predictedGap,
+          -1.5,
+          1.5
+        ),
       });
     });
 
@@ -1376,15 +1405,13 @@ function solveLinearSystem(matrix, vector) {
   return augmented.map((row) => row[n] || 0);
 }
 
-function fitRidge(rows, lambda = 1.1) {
+function fitRidge(rows, lambda = 1.1, targetKey = "residualTarget") {
   const validRows = (rows || []).filter(
     (row) =>
-      plausibleGap(row.targetGap) &&
+      Number.isFinite(row[targetKey]) &&
       FEATURE_KEYS.every((key) => Number.isFinite(row[key]))
   );
 
-  // Ridge puede funcionar con pocos datos, pero no intentamos venderlo
-  // como ML si hay una muestra ridículamente pequeña.
   if (validRows.length < 12) return null;
 
   const means = {};
@@ -1414,7 +1441,7 @@ function fitRidge(rows, lambda = 1.1) {
     ];
 
     vector.forEach((a, rowIndex) => {
-      xty[rowIndex] += a * row.targetGap;
+      xty[rowIndex] += a * row[targetKey];
 
       vector.forEach((b, columnIndex) => {
         xtx[rowIndex][columnIndex] += a * b;
@@ -1427,6 +1454,7 @@ function fitRidge(rows, lambda = 1.1) {
   }
 
   return {
+    type: "ridge",
     coefficients: solveLinearSystem(xtx, xty),
     means,
     scales,
@@ -1434,8 +1462,8 @@ function fitRidge(rows, lambda = 1.1) {
   };
 }
 
-function predictGap(model, row) {
-  if (!model) return baselineGap(row);
+function predictRidge(model, row) {
+  if (!model) return 0;
 
   const vector = [
     1,
@@ -1451,89 +1479,293 @@ function predictGap(model, row) {
   );
 }
 
-function baselineGap(row) {
-  const confidence = clamp(row.shortRunConfidence || 0.4, 0.15, 1);
-  const longRun = Number.isFinite(row.longRunGap)
-    ? row.longRunGap
-    : row.teamFormGap;
-  const teammatePenalty = clamp(row.teammateDelta || 0, -0.8, 0.8);
+function regressionLeafValue(rows, targetKey) {
+  return average(rows.map((row) => row[targetKey]), 0);
+}
 
-  const practiceWeight = 0.24 + confidence * 0.14;
-  const teamWeight = 0.28;
-  const driverWeight = 0.12;
-  const trackWeight = 0.1;
-  const longRunWeight = 0.06;
-  const teammateWeight = 0.08;
-  const evolutionWeight = 0.08;
-  const total =
-    practiceWeight +
-    teamWeight +
-    driverWeight +
-    trackWeight +
-    longRunWeight +
-    teammateWeight +
-    evolutionWeight;
+function bestTreeSplit(rows, targetKey, minLeaf = 8) {
+  let best = null;
 
-  return Math.max(
-    0,
-    (
-      row.qualyPaceGap * practiceWeight +
-      row.teamFormGap * teamWeight +
-      row.driverFormGap * driverWeight +
-      row.trackFitGap * trackWeight +
-      longRun * longRunWeight +
-      Math.max(0, teammatePenalty) * teammateWeight +
-      Math.max(0, row.teamFormGap + row.teamTrend) * evolutionWeight
-    ) / total
+  FEATURE_KEYS.forEach((feature) => {
+    const values = rows
+      .map((row) => row[feature])
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b);
+
+    if (values.length < minLeaf * 2) return;
+
+    const thresholds = [];
+    const quantiles = [0.2, 0.35, 0.5, 0.65, 0.8];
+
+    quantiles.forEach((q) => {
+      const index = Math.floor((values.length - 1) * q);
+      const threshold = values[index];
+      if (
+        Number.isFinite(threshold) &&
+        !thresholds.some((value) => Math.abs(value - threshold) < 1e-9)
+      ) {
+        thresholds.push(threshold);
+      }
+    });
+
+    thresholds.forEach((threshold) => {
+      const left = rows.filter((row) => row[feature] <= threshold);
+      const right = rows.filter((row) => row[feature] > threshold);
+
+      if (left.length < minLeaf || right.length < minLeaf) return;
+
+      const leftMean = regressionLeafValue(left, targetKey);
+      const rightMean = regressionLeafValue(right, targetKey);
+
+      const loss =
+        left.reduce(
+          (sum, row) => sum + Math.pow(row[targetKey] - leftMean, 2),
+          0
+        ) +
+        right.reduce(
+          (sum, row) => sum + Math.pow(row[targetKey] - rightMean, 2),
+          0
+        );
+
+      if (!best || loss < best.loss) {
+        best = {
+          feature,
+          threshold,
+          loss,
+          left,
+          right,
+        };
+      }
+    });
+  });
+
+  return best;
+}
+
+function fitRegressionTree(rows, targetKey, depth = 0, maxDepth = 2) {
+  if (!rows.length) {
+    return { leaf: true, value: 0 };
+  }
+
+  if (depth >= maxDepth || rows.length < 16) {
+    return {
+      leaf: true,
+      value: regressionLeafValue(rows, targetKey),
+    };
+  }
+
+  const split = bestTreeSplit(rows, targetKey);
+
+  if (!split) {
+    return {
+      leaf: true,
+      value: regressionLeafValue(rows, targetKey),
+    };
+  }
+
+  return {
+    leaf: false,
+    feature: split.feature,
+    threshold: split.threshold,
+    left: fitRegressionTree(
+      split.left,
+      targetKey,
+      depth + 1,
+      maxDepth
+    ),
+    right: fitRegressionTree(
+      split.right,
+      targetKey,
+      depth + 1,
+      maxDepth
+    ),
+  };
+}
+
+function predictTree(tree, row) {
+  if (!tree) return 0;
+  if (tree.leaf) return tree.value;
+
+  return row[tree.feature] <= tree.threshold
+    ? predictTree(tree.left, row)
+    : predictTree(tree.right, row);
+}
+
+function fitGradientBoosting(rows, options = {}) {
+  const validRows = (rows || []).filter(
+    (row) =>
+      Number.isFinite(row.residualTarget) &&
+      FEATURE_KEYS.every((key) => Number.isFinite(row[key]))
+  );
+
+  if (validRows.length < 28) return null;
+
+  const estimators = options.estimators || 36;
+  const learningRate = options.learningRate || 0.055;
+  const maxDepth = options.maxDepth || 2;
+
+  const initial = average(
+    validRows.map((row) => row.residualTarget),
+    0
+  );
+
+  const working = validRows.map((row) => ({
+    ...row,
+    __prediction: initial,
+    __residual: row.residualTarget - initial,
+  }));
+
+  const trees = [];
+
+  for (let iteration = 0; iteration < estimators; iteration += 1) {
+    const residualRows = working.map((row) => ({
+      ...row,
+      __boostTarget: row.__residual,
+    }));
+
+    const tree = fitRegressionTree(
+      residualRows,
+      "__boostTarget",
+      0,
+      maxDepth
+    );
+
+    trees.push(tree);
+
+    working.forEach((row) => {
+      const update = predictTree(tree, row) * learningRate;
+      row.__prediction += update;
+      row.__residual = row.residualTarget - row.__prediction;
+    });
+  }
+
+  return {
+    type: "gradient_boosting",
+    initial,
+    trees,
+    learningRate,
+    sampleCount: validRows.length,
+  };
+}
+
+function predictGradientBoosting(model, row) {
+  if (!model) return 0;
+
+  return model.trees.reduce(
+    (prediction, tree) =>
+      prediction + predictTree(tree, row) * model.learningRate,
+    model.initial
   );
 }
 
-function blendedPrediction(model, row) {
-  const baseline = baselineGap(row);
+function residualPrediction(model, row) {
+  if (!model) return 0;
 
-  if (!model) {
-    return clamp(baseline, 0, 4.5);
+  if (model.type === "gradient_boosting") {
+    return predictGradientBoosting(model, row);
   }
 
-  const mlRaw = predictGap(model, row);
+  return predictRidge(model, row);
+}
 
-  const mlClipped = clamp(
-    mlRaw,
-    Math.max(0, baseline - 0.45),
-    baseline + 0.45
+function applyResidualModel(baseGap, model, row) {
+  const correction = clamp(
+    residualPrediction(model, row),
+    -0.55,
+    0.55
   );
 
-  const confidence = clamp(row.shortRunConfidence || 0.4, 0.15, 1);
-  const mlWeight = 0.3 + confidence * 0.14;
-
-  return clamp(
-    baseline * (1 - mlWeight) + mlClipped * mlWeight,
-    0,
-    4.5
-  );
+  return clamp(baseGap + correction, 0, 4.5);
 }
 
 function temporalValidation(training) {
   const events = [...new Set(training.rows.map((row) => row.eventIndex))];
-  const errors = [];
+  const errors = {
+    baseline: [],
+    ridge: [],
+    gradient_boosting: [],
+  };
 
   events.slice(2).forEach((eventIndex) => {
     const train = training.rows.filter((row) => row.eventIndex < eventIndex);
     const test = training.rows.filter((row) => row.eventIndex === eventIndex);
-    const model = fitRidge(train);
 
-    if (!model) return;
+    const ridge = fitRidge(train);
+    const gradient = fitGradientBoosting(train);
 
     test.forEach((row) => {
-      const prediction = blendedPrediction(model, row);
-      errors.push(Math.abs(prediction - row.targetGap));
+      errors.baseline.push(
+        Math.abs(row.historicalBaseGap - row.targetGap)
+      );
+
+      if (ridge) {
+        errors.ridge.push(
+          Math.abs(
+            applyResidualModel(
+              row.historicalBaseGap,
+              ridge,
+              row
+            ) - row.targetGap
+          )
+        );
+      }
+
+      if (gradient) {
+        errors.gradient_boosting.push(
+          Math.abs(
+            applyResidualModel(
+              row.historicalBaseGap,
+              gradient,
+              row
+            ) - row.targetGap
+          )
+        );
+      }
     });
   });
 
-  return {
-    mae: average(errors, null),
-    samples: errors.length,
+  const metrics = {
+    baseline: {
+      mae: average(errors.baseline, null),
+      samples: errors.baseline.length,
+    },
+    ridge: {
+      mae: average(errors.ridge, null),
+      samples: errors.ridge.length,
+    },
+    gradient_boosting: {
+      mae: average(errors.gradient_boosting, null),
+      samples: errors.gradient_boosting.length,
+    },
   };
+
+  const candidates = Object.entries(metrics)
+    .filter(([, metric]) => Number.isFinite(metric.mae))
+    .sort((a, b) => a[1].mae - b[1].mae);
+
+  const winner = candidates.length ? candidates[0][0] : "baseline";
+  const winnerMetric = metrics[winner];
+
+  return {
+    mae: winnerMetric && Number.isFinite(winnerMetric.mae)
+      ? winnerMetric.mae
+      : null,
+    samples: winnerMetric ? winnerMetric.samples : 0,
+    winner,
+    metrics,
+  };
+}
+
+function modelLabel(type) {
+  if (type === "gradient_boosting") {
+    return "Gradient Boosting residual";
+  }
+
+  if (type === "ridge") {
+    return "Ridge residual";
+  }
+
+  return "Baseline histórico";
 }
 
 function seededRandom(seed) {
@@ -1790,11 +2022,28 @@ function buildFactors(item, predictions, practiceName, profileLabel) {
   return factors.slice(0, 3);
 }
 
-function buildPrediction(targetBundle, historicalBundles, qualyPriors = new Map()) {
-  const training = buildTraining(historicalBundles);
-  const model = fitRidge(training.rows);
+function buildPrediction(
+  targetBundle,
+  historicalBundles,
+  qualyPriors = new Map(),
+  qualyHistory = []
+) {
+  const training = buildTraining(
+    historicalBundles,
+    qualyHistory
+  );
 
   const validation = temporalValidation(training);
+
+  const ridgeModel = fitRidge(training.rows);
+  const gradientModel = fitGradientBoosting(training.rows);
+
+  const selectedModel =
+    validation.winner === "gradient_boosting"
+      ? gradientModel
+      : validation.winner === "ridge"
+        ? ridgeModel
+        : null;
   const target = attachQualyPriors(
     makeTargetRows(targetBundle, training.state),
     qualyPriors
@@ -1806,16 +2055,26 @@ function buildPrediction(targetBundle, historicalBundles, qualyPriors = new Map(
     );
   }
 
-  let predictions = target
+  let predictions = calibrateWithQualyPrior(
+    target.map((row) => ({
+      ...row,
+      baselineGap: baselineGap(row),
+      predictedGap: baselineGap(row),
+    }))
+  );
+
+  predictions = predictions
     .map((row) => ({
       ...row,
-      modelGap: predictGap(model, row),
-      baselineGap: baselineGap(row),
-      predictedGap: blendedPrediction(model, row),
+      preModelGap: row.predictedGap,
+      residualCorrection: selectedModel
+        ? clamp(residualPrediction(selectedModel, row), -0.55, 0.55)
+        : 0,
+      predictedGap: selectedModel
+        ? applyResidualModel(row.predictedGap, selectedModel, row)
+        : row.predictedGap,
     }))
     .filter((row) => Number.isFinite(row.predictedGap));
-
-  predictions = calibrateWithQualyPrior(predictions);
 
   const minimum = Math.min(...predictions.map((row) => row.predictedGap));
 
@@ -1969,14 +2228,14 @@ function buildPrediction(targetBundle, historicalBundles, qualyPriors = new Map(
 
   const confidence = clamp(
     Math.round(
-      (model ? 78 : 52) -
-        (validation.mae || (model ? 0.38 : 0.6)) * 34 -
+      (selectedModel ? 80 : 58) -
+        (validation.mae || (selectedModel ? 0.38 : 0.6)) * 34 -
         Math.max(0, 4 - historicalBundles.length) * 7 +
         averageConfidence * 8 -
         (validation.samples === 0 ? 12 : 0)
     ),
     28,
-    model ? 86 : 58
+    selectedModel ? 88 : 62
   );
 
   return {
@@ -1989,8 +2248,11 @@ function buildPrediction(targetBundle, historicalBundles, qualyPriors = new Map(
     profileLabel,
     trainingEvents: historicalBundles.length,
     trainingRows: training.rows.length,
-    modelActive: Boolean(model),
-    modelSamples: model ? model.sampleCount : 0,
+    modelActive: Boolean(selectedModel),
+    modelSamples: selectedModel ? selectedModel.sampleCount : 0,
+    selectedModel: validation.winner,
+    selectedModelLabel: modelLabel(validation.winner),
+    modelMetrics: validation.metrics,
     qualyPriorCoverage: predictions.filter(
       (row) => row.qualyPrior && row.qualyPrior.events >= 3
     ).length,
@@ -2145,7 +2407,8 @@ export default function QualyPredictor() {
       const result = buildPrediction(
         targetBundle,
         historicalBundles,
-        qualyPriors
+        qualyPriors,
+        qualyHistory
       );
       setPrediction(result);
       setSelectedDriver(result.predictions[0] && result.predictions[0].driverNumber);
@@ -2175,8 +2438,8 @@ export default function QualyPredictor() {
 
         <div className="qualy-model-chip">
           <span>Modelo</span>
-          <strong>Ridge + baseline estable</strong>
-          <small>Validación temporal · Monte Carlo</small>
+          <strong>Selección automática</strong>
+          <small>Baseline · Ridge residual · Gradient Boosting</small>
         </div>
       </section>
 
@@ -2254,8 +2517,8 @@ export default function QualyPredictor() {
               <strong>{prediction.trainingRows}</strong>
               <small>
                 {prediction.trainingEvents} GP · {prediction.modelActive
-                  ? prediction.modelSamples + " muestras ML"
-                  : "baseline de seguridad activo"}
+                  ? prediction.modelSamples + " muestras · " + prediction.selectedModelLabel
+                  : "baseline histórico elegido"}
               </small>
             </article>
 
@@ -2304,9 +2567,9 @@ export default function QualyPredictor() {
 
             <article>
               <span>Lectura del modelo</span>
-              <strong>Short run + qualy prior</strong>
+              <strong>{prediction.selectedModelLabel}</strong>
               <small>
-                {prediction.qualyPriorCoverage} pilotos con historial reciente suficiente
+                Elegido por validación temporal · {prediction.qualyPriorCoverage} pilotos con prior de qualy
               </small>
             </article>
           </section>
