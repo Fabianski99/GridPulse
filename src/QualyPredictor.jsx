@@ -4,11 +4,12 @@ import "./QualyPredictor.css";
 const OPENF1 = "/api/openf1";
 const JOLPICA = "https://api.jolpi.ca/ergast/f1";
 const YEARS = [2025, 2026];
-const TRAINING_EVENTS = 5;
+const TRAINING_EVENTS = 6;
 const REQUEST_GAP_MS = 1350;
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const FEATURE_KEYS = [
   "qualyPaceGap",
+  "theoreticalGap",
   "practicePosition",
   "shortRunConfidence",
   "longRunGap",
@@ -20,9 +21,12 @@ const FEATURE_KEYS = [
   "trackFitGap",
   "driverFormPosition",
   "practiceCoverage",
+  "qualyPriorStrength",
+  "qualyPriorPosition",
+  "qualyPriorMomentum",
 ];
 
-const TRACK_PROFILES = {
+const TRACK_PROFILES = {const TRACK_PROFILES = {
   "albert park": "balanced",
   shanghai: "balanced",
   suzuka: "high_speed",
@@ -288,7 +292,7 @@ function buildQualyPriors(races, cutoffTimestamp) {
         Array.isArray(race.QualifyingResults)
     )
     .sort((a, b) => a.timestamp - b.timestamp)
-    .slice(-10);
+    .slice(-14);
 
   const history = new Map();
 
@@ -355,7 +359,7 @@ function buildQualyPriors(races, cutoffTimestamp) {
   const priors = new Map();
 
   history.forEach((entries, code) => {
-    const recent = entries.slice(-8);
+    const recent = entries.slice(-10);
     if (!recent.length) return;
 
     let weightSum = 0;
@@ -425,7 +429,7 @@ function buildQualyPriors(races, cutoffTimestamp) {
     const rawStrength =
       weightSum > 0 ? scoreSum / weightSum : 0.5;
 
-    const sampleConfidence = clamp(recent.length / 5, 0.35, 1);
+    const sampleConfidence = clamp(recent.length / 6, 0.35, 1);
     const teammateStrength =
       teammateWeight > 0
         ? clamp(
@@ -480,14 +484,31 @@ function attachQualyPriors(rows, priors) {
         ? String(row.driver.name_acronym).toUpperCase()
         : null;
 
+    const prior = code ? priors.get(code) || null : null;
+    const fallbackPosition = Number.isFinite(row.driverFormPosition)
+      ? row.driverFormPosition
+      : 0.525;
+
     return {
       ...row,
-      qualyPrior: code ? priors.get(code) || null : null,
+      qualyPrior: prior,
+      qualyPriorStrength:
+        prior && Number.isFinite(prior.strength)
+          ? prior.strength
+          : 0.5,
+      qualyPriorPosition:
+        prior && Number.isFinite(prior.weightedPosition)
+          ? clamp(prior.weightedPosition / 20, 0, 1.5)
+          : fallbackPosition,
+      qualyPriorMomentum:
+        prior && Number.isFinite(prior.momentum)
+          ? clamp(prior.momentum, -0.5, 0.5)
+          : 0,
     };
   });
 }
 
-function calibrateWithQualyPrior(predictions) {
+function calibrateWithQualyPrior(predictions) {function calibrateWithQualyPrior(predictions) {
   const rows = predictions || [];
   const strengths = rows
     .map((row) => row.qualyPrior && row.qualyPrior.strength)
@@ -517,10 +538,17 @@ function calibrateWithQualyPrior(predictions) {
       1
     );
 
+    const priorReliability =
+      prior && Number.isFinite(prior.events)
+        ? clamp(prior.events / 6, 0.4, 1)
+        : 0.4;
+
     const historyWeight = clamp(
-      0.18 + (1 - practiceConfidence) * 0.14,
+      0.16 +
+        priorReliability * 0.08 +
+        (1 - practiceConfidence) * 0.14,
       0.18,
-      0.32
+      0.38
     );
 
     const calibrated =
@@ -778,6 +806,28 @@ function analyzePracticeSession(session, laps, stints, drivers) {
     const ordered = [...driverLaps].sort((a, b) => a.lapNumber - b.lapNumber);
     const fastest = Math.min(...ordered.map((lap) => lap.adjustedDuration));
 
+    const sectorPool = ordered.filter(
+      (lap) =>
+        lap.adjustedDuration <= fastest * 1.06 &&
+        lap.tyreAge <= 5 &&
+        ["SOFT", "MEDIUM", "UNKNOWN"].includes(lap.compound)
+    );
+
+    const sector1 = sectorPool
+      .map((lap) => safeNumber(lap.duration_sector_1))
+      .filter(Number.isFinite);
+    const sector2 = sectorPool
+      .map((lap) => safeNumber(lap.duration_sector_2))
+      .filter(Number.isFinite);
+    const sector3 = sectorPool
+      .map((lap) => safeNumber(lap.duration_sector_3))
+      .filter(Number.isFinite);
+
+    const theoreticalDuration =
+      sector1.length && sector2.length && sector3.length
+        ? Math.min(...sector1) + Math.min(...sector2) + Math.min(...sector3)
+        : fastest;
+
     let candidates = ordered.filter((lap) => {
       const shortRun = lap.stintLength <= 4;
       const suitableTyre =
@@ -857,6 +907,7 @@ function analyzePracticeSession(session, laps, stints, drivers) {
       driver: driverInfo.get(driverNumber),
       qualyDuration: qualyLap ? qualyLap.adjustedDuration : fastest,
       qualyRawDuration: qualyLap ? qualyLap.lapDuration : fastest,
+      theoreticalDuration,
       selectedProgress: qualyLap ? qualyLap.progress : 0.5,
       selectedCompound: qualyLap ? qualyLap.compound : "UNKNOWN",
       selectedTyreAge: qualyLap ? qualyLap.tyreAge : null,
@@ -878,6 +929,9 @@ function analyzePracticeSession(session, laps, stints, drivers) {
   const rawQualyValues = [...raw.values()]
     .map((item) => item.qualyRawDuration)
     .filter(plausibleLapTime);
+  const theoreticalValues = [...raw.values()]
+    .map((item) => item.theoreticalDuration)
+    .filter(plausibleLapTime);
   const longRunValues = [...raw.values()]
     .map((item) => item.longRunDuration)
     .filter(Number.isFinite);
@@ -886,6 +940,9 @@ function analyzePracticeSession(session, laps, stints, drivers) {
   const leaderRawQualy = rawQualyValues.length
     ? Math.min(...rawQualyValues)
     : null;
+  const leaderTheoretical = theoreticalValues.length
+    ? Math.min(...theoreticalValues)
+    : leaderQualy;
   const leaderLongRun = longRunValues.length ? Math.min(...longRunValues) : null;
 
   const byDriver = new Map();
@@ -896,6 +953,11 @@ function analyzePracticeSession(session, laps, stints, drivers) {
       qualyGap:
         Number.isFinite(leaderQualy) && Number.isFinite(item.qualyDuration)
           ? Math.max(0, item.qualyDuration - leaderQualy)
+          : null,
+      theoreticalGap:
+        Number.isFinite(leaderTheoretical) &&
+        Number.isFinite(item.theoreticalDuration)
+          ? Math.max(0, item.theoreticalDuration - leaderTheoretical)
           : null,
       longRunGap:
         Number.isFinite(leaderLongRun) && Number.isFinite(item.longRunDuration)
@@ -936,6 +998,7 @@ function analyzePracticeSession(session, laps, stints, drivers) {
     byDriver,
     leaderQualy,
     leaderRawQualy,
+    leaderTheoretical,
     leaderLongRun,
   };
 }
@@ -959,21 +1022,37 @@ async function loadBundle(meeting, target) {
     false
   );
 
-  const analyses = [];
-  const practicesToAnalyze = target
-    ? practices
-    : [practices[practices.length - 1]];
+  // Histórico y objetivo usan la misma información previa a clasificación.
+  // Agrupar las consultas por meeting evita multiplicar peticiones al añadir FP1/FP2/FP3.
+  const firstPracticeStart = practices[0].date_start;
+  const [meetingLaps, meetingStints] = await Promise.all([
+    openF1(
+      "laps",
+      {
+        meeting_key: meeting.meeting_key,
+        "date_start>=": firstPracticeStart,
+        "date_start<": qualifying.date_start,
+      },
+      false
+    ),
+    openF1(
+      "stints",
+      { meeting_key: meeting.meeting_key },
+      false
+    ),
+  ]);
 
-  for (const practice of practicesToAnalyze) {
-    const [laps, stints] = await Promise.all([
-      openF1("laps", { session_key: practice.session_key }, false),
-      openF1("stints", { session_key: practice.session_key }, false),
-    ]);
-
-    analyses.push(
-      analyzePracticeSession(practice, laps, stints, drivers)
+  const analyses = practices.map((practice) => {
+    const sessionKey = Number(practice.session_key);
+    const laps = (meetingLaps || []).filter(
+      (lap) => Number(lap.session_key) === sessionKey
     );
-  }
+    const stints = (meetingStints || []).filter(
+      (stint) => Number(stint.session_key) === sessionKey
+    );
+
+    return analyzePracticeSession(practice, laps, stints, drivers);
+  });
 
   const qualifyingFinished =
     new Date(qualifying.date_end).getTime() <= Date.now();
@@ -1001,7 +1080,7 @@ async function loadBundle(meeting, target) {
   };
 }
 
-function practiceMetrics(bundle) {
+function practiceMetrics(bundle) {function practiceMetrics(bundle) {
   const analyses = bundle.practiceAnalyses || [];
   if (!analyses.length) return null;
 
@@ -1024,6 +1103,7 @@ function practiceMetrics(bundle) {
         totals.set(driverNumber, {
           weight: 0,
           qualyPaceGap: 0,
+          theoreticalGap: 0,
           longRunGap: 0,
           longRunWeight: 0,
           shortRunConfidence: 0,
@@ -1042,6 +1122,10 @@ function practiceMetrics(bundle) {
 
       target.weight += weight;
       target.qualyPaceGap += item.qualyGap * weight;
+      target.theoreticalGap +=
+        (Number.isFinite(item.theoreticalGap)
+          ? item.theoreticalGap
+          : item.qualyGap) * weight;
       target.shortRunConfidence += item.shortRunConfidence * weight;
       target.teammateDelta += item.teammateDelta * weight;
       target.trackEvolutionExposure +=
@@ -1071,6 +1155,7 @@ function practiceMetrics(bundle) {
       driverNumber,
       driver: item.driver,
       qualyPaceGap: item.qualyPaceGap / weight,
+      theoreticalGap: item.theoreticalGap / weight,
       longRunGap:
         item.longRunWeight > 0
           ? item.longRunGap / item.longRunWeight
@@ -1209,9 +1294,6 @@ function buildTraining(bundles, qualyHistory = []) {
       const team = driver.team_name;
       const profileKey = team + "::" + bundle.profile;
       const teamFallback = recentAverage(teamGap, team, globalGap);
-      const code = driver.name_acronym
-        ? String(driver.name_acronym).toUpperCase()
-        : null;
 
       eventRows.push({
         eventIndex,
@@ -1219,6 +1301,9 @@ function buildTraining(bundles, qualyHistory = []) {
         driver,
         team,
         qualyPaceGap: p.qualyPaceGap,
+        theoreticalGap: Number.isFinite(p.theoreticalGap)
+          ? p.theoreticalGap
+          : p.qualyPaceGap,
         practicePosition: (p.position - 1) / 21,
         shortRunConfidence: p.shortRunConfidence,
         longRunGap: Number.isFinite(p.longRunGap)
@@ -1246,14 +1331,18 @@ function buildTraining(bundles, qualyHistory = []) {
         topSpeed: p.topSpeed,
         selectedCompound: p.selectedCompound,
         selectedTyreAge: p.selectedTyreAge,
-        qualyPrior: code ? eventPriors.get(code) || null : null,
         targetGap: target.gap,
         targetPosition: target.position,
       });
     });
 
+    const enrichedEventRows = attachQualyPriors(
+      eventRows,
+      eventPriors
+    );
+
     const calibratedBaseline = calibrateWithQualyPrior(
-      eventRows.map((row) => ({
+      enrichedEventRows.map((row) => ({
         ...row,
         predictedGap: baselineGap(row),
       }))
@@ -1329,6 +1418,9 @@ function makeTargetRows(bundle, state) {
         driver,
         team,
         qualyPaceGap: p.qualyPaceGap,
+        theoreticalGap: Number.isFinite(p.theoreticalGap)
+          ? p.theoreticalGap
+          : p.qualyPaceGap,
         practicePosition: (p.position - 1) / 21,
         practicePositionRaw: p.position,
         shortRunConfidence: p.shortRunConfidence,
@@ -1411,48 +1503,58 @@ function baselineGap(row) {
   const longRun = Number.isFinite(row.longRunGap)
     ? row.longRunGap
     : row.teamFormGap;
-  const teammatePenalty = clamp(
+  const theoretical = Number.isFinite(row.theoreticalGap)
+    ? row.theoreticalGap
+    : row.qualyPaceGap;
+  const teammateDelta = clamp(
     row.teammateDelta || 0,
-    -0.8,
-    0.8
+    -0.9,
+    0.9
   );
 
-  const practiceWeight = 0.22 + confidence * 0.13;
-  const teamWeight = 0.24;
-  const driverWeight = 0.14;
-  const trackWeight = 0.09;
-  const longRunWeight = 0.05;
+  const teammateSignal = clamp(
+    row.teamFormGap + teammateDelta * 0.45,
+    0,
+    4.5
+  );
+  const trendSignal = clamp(
+    row.teamFormGap + row.teamTrend,
+    0,
+    4.5
+  );
+
+  const practiceWeight = 0.2 + confidence * 0.1;
+  const theoreticalWeight = 0.12;
+  const teamWeight = 0.23;
+  const driverWeight = 0.12;
+  const trackWeight = 0.07;
+  const longRunWeight = 0.04;
   const teammateWeight = 0.07;
-  const evolutionWeight = 0.08;
-  const trendWeight = 0.11;
+  const trendWeight = 0.08;
 
   const total =
     practiceWeight +
+    theoreticalWeight +
     teamWeight +
     driverWeight +
     trackWeight +
     longRunWeight +
     teammateWeight +
-    evolutionWeight +
     trendWeight;
 
-  return clamp(
-    (
-      row.qualyPaceGap * practiceWeight +
-      row.teamFormGap * teamWeight +
-      row.driverFormGap * driverWeight +
-      row.trackFitGap * trackWeight +
-      longRun * longRunWeight +
-      Math.max(0, teammatePenalty) * teammateWeight +
-      Math.max(0, row.teamFormGap + row.teamTrend) * evolutionWeight +
-      Math.max(0, row.teamTrend + 0.15) * trendWeight
-    ) / total,
-    0,
-    4.5
-  );
+  return (
+    row.qualyPaceGap * practiceWeight +
+    theoretical * theoreticalWeight +
+    row.teamFormGap * teamWeight +
+    row.driverFormGap * driverWeight +
+    row.trackFitGap * trackWeight +
+    longRun * longRunWeight +
+    teammateSignal * teammateWeight +
+    trendSignal * trendWeight
+  ) / total;
 }
 
-function fitRidge(rows, lambda = 1.1, targetKey = "residualTarget") {
+function fitRidge(rows, lambda = 1.1, targetKey = "residualTarget") {function fitRidge(rows, lambda = 1.1, targetKey = "residualTarget") {
   const validRows = (rows || []).filter(
     (row) =>
       Number.isFinite(row[targetKey]) &&
@@ -1722,16 +1824,127 @@ function applyResidualModel(baseGap, model, row) {
     0.55
   );
 
-  return clamp(baseGap + correction, 0, 4.5);
+  // Los residuales pueden ser negativos antes de recentrar el campo.
+  // Recortarlos aquí era la causa de varios líderes con exactamente el mismo tiempo.
+  return clamp(baseGap + correction, -0.9, 4.5);
+}
+
+function rankMetrics(rows) {
+  if (!rows.length) {
+    return {
+      positionMae: null,
+      ndcg: null,
+      top3Hits: 0,
+      top3Possible: 0,
+    };
+  }
+
+  const predicted = [...rows]
+    .sort((a, b) => a.predictedGap - b.predictedGap)
+    .map((row, index) => ({
+      ...row,
+      predictedPosition: index + 1,
+    }));
+
+  const positionMae = average(
+    predicted.map((row) =>
+      Math.abs(row.predictedPosition - row.targetPosition)
+    ),
+    null
+  );
+
+  const relevance = (position) =>
+    Math.max(0, 21 - Number(position || 21));
+
+  const dcg = predicted.reduce(
+    (sum, row, index) =>
+      sum +
+      relevance(row.targetPosition) /
+        Math.log2(index + 2),
+    0
+  );
+
+  const ideal = [...predicted]
+    .sort((a, b) => a.targetPosition - b.targetPosition)
+    .reduce(
+      (sum, row, index) =>
+        sum +
+        relevance(row.targetPosition) /
+          Math.log2(index + 2),
+      0
+    );
+
+  const predictedTop3 = predicted.slice(0, 3);
+  const top3Hits = predictedTop3.filter(
+    (row) => row.targetPosition <= 3
+  ).length;
+
+  return {
+    positionMae,
+    ndcg: ideal > 0 ? dcg / ideal : null,
+    top3Hits,
+    top3Possible: Math.min(3, predicted.length),
+  };
+}
+
+function blendModelGaps(baseGap, row, ridge, gradient) {
+  const parts = [{ value: baseGap, weight: 0.38 }];
+
+  if (ridge) {
+    parts.push({
+      value: applyResidualModel(baseGap, ridge, row),
+      weight: 0.34,
+    });
+  }
+
+  if (gradient) {
+    parts.push({
+      value: applyResidualModel(baseGap, gradient, row),
+      weight: 0.28,
+    });
+  }
+
+  const totalWeight = parts.reduce(
+    (sum, part) => sum + part.weight,
+    0
+  );
+
+  return parts.reduce(
+    (sum, part) => sum + part.value * part.weight,
+    0
+  ) / Math.max(totalWeight, 0.001);
 }
 
 function temporalValidation(training) {
   const events = [...new Set(training.rows.map((row) => row.eventIndex))];
-  const errors = {
-    baseline: [],
-    ridge: [],
-    gradient_boosting: [],
+  const buckets = {
+    baseline: { gapErrors: [], positionErrors: [], ndcg: [], top3Hits: 0, top3Possible: 0, events: 0 },
+    ridge: { gapErrors: [], positionErrors: [], ndcg: [], top3Hits: 0, top3Possible: 0, events: 0 },
+    gradient_boosting: { gapErrors: [], positionErrors: [], ndcg: [], top3Hits: 0, top3Possible: 0, events: 0 },
+    ensemble: { gapErrors: [], positionErrors: [], ndcg: [], top3Hits: 0, top3Possible: 0, events: 0 },
   };
+
+  function record(type, rows) {
+    if (!rows.length) return;
+    const bucket = buckets[type];
+
+    rows.forEach((row) => {
+      bucket.gapErrors.push(
+        Math.abs(row.predictedGap - row.targetGap)
+      );
+    });
+
+    const rank = rankMetrics(rows);
+    if (Number.isFinite(rank.positionMae)) {
+      bucket.positionErrors.push(rank.positionMae);
+    }
+    if (Number.isFinite(rank.ndcg)) {
+      bucket.ndcg.push(rank.ndcg);
+    }
+    bucket.top3Hits += rank.top3Hits;
+    bucket.top3Possible += rank.top3Possible;
+    bucket.events += 1;
+  }
 
   events.slice(2).forEach((eventIndex) => {
     const train = training.rows.filter((row) => row.eventIndex < eventIndex);
@@ -1740,70 +1953,137 @@ function temporalValidation(training) {
     const ridge = fitRidge(train);
     const gradient = fitGradientBoosting(train);
 
-    test.forEach((row) => {
-      errors.baseline.push(
-        Math.abs(row.historicalBaseGap - row.targetGap)
+    record(
+      "baseline",
+      test.map((row) => ({
+        ...row,
+        predictedGap: row.historicalBaseGap,
+      }))
+    );
+
+    if (ridge) {
+      record(
+        "ridge",
+        test.map((row) => ({
+          ...row,
+          predictedGap: applyResidualModel(
+            row.historicalBaseGap,
+            ridge,
+            row
+          ),
+        }))
       );
+    }
 
-      if (ridge) {
-        errors.ridge.push(
-          Math.abs(
-            applyResidualModel(
-              row.historicalBaseGap,
-              ridge,
-              row
-            ) - row.targetGap
-          )
-        );
-      }
+    if (gradient) {
+      record(
+        "gradient_boosting",
+        test.map((row) => ({
+          ...row,
+          predictedGap: applyResidualModel(
+            row.historicalBaseGap,
+            gradient,
+            row
+          ),
+        }))
+      );
+    }
 
-      if (gradient) {
-        errors.gradient_boosting.push(
-          Math.abs(
-            applyResidualModel(
-              row.historicalBaseGap,
-              gradient,
-              row
-            ) - row.targetGap
-          )
-        );
-      }
-    });
+    if (ridge || gradient) {
+      record(
+        "ensemble",
+        test.map((row) => ({
+          ...row,
+          predictedGap: blendModelGaps(
+            row.historicalBaseGap,
+            row,
+            ridge,
+            gradient
+          ),
+        }))
+      );
+    }
   });
 
-  const metrics = {
-    baseline: {
-      mae: average(errors.baseline, null),
-      samples: errors.baseline.length,
-    },
-    ridge: {
-      mae: average(errors.ridge, null),
-      samples: errors.ridge.length,
-    },
-    gradient_boosting: {
-      mae: average(errors.gradient_boosting, null),
-      samples: errors.gradient_boosting.length,
-    },
-  };
+  const baselineSamples = buckets.baseline.gapErrors.length;
+
+  const metrics = Object.fromEntries(
+    Object.entries(buckets).map(([type, bucket]) => {
+      const mae = average(bucket.gapErrors, null);
+      const positionMae = average(bucket.positionErrors, null);
+      const ndcg = average(bucket.ndcg, null);
+      const top3Rate =
+        bucket.top3Possible > 0
+          ? bucket.top3Hits / bucket.top3Possible
+          : null;
+      const coverage =
+        baselineSamples > 0
+          ? bucket.gapErrors.length / baselineSamples
+          : 0;
+
+      const selectionScore =
+        Number.isFinite(mae) &&
+        Number.isFinite(positionMae) &&
+        Number.isFinite(ndcg)
+          ? mae +
+            positionMae * 0.075 +
+            (1 - ndcg) * 1.2 +
+            (Number.isFinite(top3Rate)
+              ? (1 - top3Rate) * 0.12
+              : 0.12) +
+            Math.max(0, 0.85 - coverage) * 0.35
+          : null;
+
+      return [
+        type,
+        {
+          mae,
+          positionMae,
+          ndcg,
+          top3Rate,
+          samples: bucket.gapErrors.length,
+          events: bucket.events,
+          selectionScore,
+        },
+      ];
+    })
+  );
 
   const candidates = Object.entries(metrics)
-    .filter(([, metric]) => Number.isFinite(metric.mae))
-    .sort((a, b) => a[1].mae - b[1].mae);
+    .filter(([, metric]) => Number.isFinite(metric.selectionScore))
+    .sort((a, b) => a[1].selectionScore - b[1].selectionScore);
 
   const winner = candidates.length ? candidates[0][0] : "baseline";
   const winnerMetric = metrics[winner];
 
   return {
-    mae: winnerMetric && Number.isFinite(winnerMetric.mae)
-      ? winnerMetric.mae
-      : null,
+    mae:
+      winnerMetric && Number.isFinite(winnerMetric.mae)
+        ? winnerMetric.mae
+        : null,
+    positionMae:
+      winnerMetric && Number.isFinite(winnerMetric.positionMae)
+        ? winnerMetric.positionMae
+        : null,
+    ndcg:
+      winnerMetric && Number.isFinite(winnerMetric.ndcg)
+        ? winnerMetric.ndcg
+        : null,
+    top3Rate:
+      winnerMetric && Number.isFinite(winnerMetric.top3Rate)
+        ? winnerMetric.top3Rate
+        : null,
     samples: winnerMetric ? winnerMetric.samples : 0,
     winner,
     metrics,
   };
 }
 
-function modelLabel(type) {
+function modelLabel(type) {function modelLabel(type) {
+  if (type === "ensemble") {
+    return "Ensemble híbrido";
+  }
+
   if (type === "gradient_boosting") {
     return "Gradient Boosting residual";
   }
@@ -2091,6 +2371,9 @@ function buildPrediction(
       : validation.winner === "ridge"
         ? ridgeModel
         : null;
+  const ensembleSelected = validation.winner === "ensemble";
+  const modelActive = ensembleSelected || Boolean(selectedModel);
+
   const target = attachQualyPriors(
     makeTargetRows(targetBundle, training.state),
     qualyPriors
@@ -2111,16 +2394,29 @@ function buildPrediction(
   );
 
   predictions = predictions
-    .map((row) => ({
-      ...row,
-      preModelGap: row.predictedGap,
-      residualCorrection: selectedModel
-        ? clamp(residualPrediction(selectedModel, row), -0.55, 0.55)
-        : 0,
-      predictedGap: selectedModel
-        ? applyResidualModel(row.predictedGap, selectedModel, row)
-        : row.predictedGap,
-    }))
+    .map((row) => {
+      const modelGap = ensembleSelected
+        ? blendModelGaps(
+            row.predictedGap,
+            row,
+            ridgeModel,
+            gradientModel
+          )
+        : selectedModel
+          ? applyResidualModel(
+              row.predictedGap,
+              selectedModel,
+              row
+            )
+          : row.predictedGap;
+
+      return {
+        ...row,
+        preModelGap: row.predictedGap,
+        residualCorrection: modelGap - row.predictedGap,
+        predictedGap: modelGap,
+      };
+    })
     .filter((row) => Number.isFinite(row.predictedGap));
 
   const minimum = Math.min(...predictions.map((row) => row.predictedGap));
@@ -2130,7 +2426,28 @@ function buildPrediction(
       ...row,
       predictedGap: clamp(row.predictedGap - minimum, 0, 4.5),
     }))
-    .sort((a, b) => a.predictedGap - b.predictedGap);
+    .sort(
+      (a, b) =>
+        a.predictedGap - b.predictedGap ||
+        a.qualyPaceGap - b.qualyPaceGap ||
+        a.qualyPriorPosition - b.qualyPriorPosition
+    );
+
+  // Solo separa empates exactos al milisegundo; no cambia el orden aprendido.
+  let previousGap = -1;
+  predictions = predictions.map((row, index) => {
+    let gap = row.predictedGap;
+
+    if (index > 0 && gap - previousGap < 0.001) {
+      gap = previousGap + 0.001;
+    }
+
+    previousGap = gap;
+    return {
+      ...row,
+      predictedGap: clamp(gap, 0, 4.5),
+    };
+  });
 
   const ratios = historicalBundles
     .map((bundle) => {
@@ -2273,16 +2590,54 @@ function buildPrediction(
     0.45
   );
 
+  const priorCoverage = predictions.filter(
+    (row) => row.qualyPrior && row.qualyPrior.events >= 3
+  ).length;
+  const priorCoverageRatio =
+    predictions.length > 0
+      ? priorCoverage / predictions.length
+      : 0;
+
+  const gapConfidence = clamp(
+    1 - (validation.mae ?? 0.85) / 1.4,
+    0,
+    1
+  );
+  const rankingConfidence = clamp(
+    1 - (validation.positionMae ?? 4.5) / 6,
+    0,
+    1
+  );
+  const ndcgConfidence = clamp(
+    validation.ndcg ?? 0.72,
+    0,
+    1
+  );
+  const top3Confidence = clamp(
+    validation.top3Rate ?? 0.35,
+    0,
+    1
+  );
+  const dataConfidence = clamp(
+    (historicalBundles.length / TRAINING_EVENTS) * 0.5 +
+      averageConfidence * 0.3 +
+      priorCoverageRatio * 0.2,
+    0,
+    1
+  );
+
   const confidence = clamp(
     Math.round(
-      (selectedModel ? 80 : 58) -
-        (validation.mae || (selectedModel ? 0.38 : 0.6)) * 34 -
-        Math.max(0, 4 - historicalBundles.length) * 7 +
-        averageConfidence * 8 -
-        (validation.samples === 0 ? 12 : 0)
+      (
+        rankingConfidence * 0.3 +
+        ndcgConfidence * 0.25 +
+        gapConfidence * 0.2 +
+        top3Confidence * 0.15 +
+        dataConfidence * 0.1
+      ) * 100
     ),
-    28,
-    selectedModel ? 88 : 62
+    35,
+    92
   );
 
   return {
@@ -2295,14 +2650,19 @@ function buildPrediction(
     profileLabel,
     trainingEvents: historicalBundles.length,
     trainingRows: training.rows.length,
-    modelActive: Boolean(selectedModel),
-    modelSamples: selectedModel ? selectedModel.sampleCount : 0,
+    modelActive,
+    modelSamples: ensembleSelected
+      ? Math.max(
+          ridgeModel ? ridgeModel.sampleCount : 0,
+          gradientModel ? gradientModel.sampleCount : 0
+        )
+      : selectedModel
+        ? selectedModel.sampleCount
+        : training.rows.length,
     selectedModel: validation.winner,
     selectedModelLabel: modelLabel(validation.winner),
     modelMetrics: validation.metrics,
-    qualyPriorCoverage: predictions.filter(
-      (row) => row.qualyPrior && row.qualyPrior.events >= 3
-    ).length,
+    qualyPriorCoverage: priorCoverage,
     shortRuns: targetPractice ? targetPractice.shortRuns : 0,
     longRuns: targetPractice ? targetPractice.longRuns : 0,
     trackEvolution: targetPractice ? targetPractice.evolution : 0,
@@ -2449,7 +2809,7 @@ export default function QualyPredictor() {
         selectedMeeting.startDate
       );
 
-      setProgress("Entrenando Ridge Regression y simulando 450 escenarios…");
+      setProgress("Validando baseline, Ridge, Gradient Boosting y ensemble…");
 
       const result = buildPrediction(
         targetBundle,
@@ -2486,7 +2846,7 @@ export default function QualyPredictor() {
         <div className="qualy-model-chip">
           <span>Modelo</span>
           <strong>Selección automática</strong>
-          <small>Baseline · Ridge residual · Gradient Boosting</small>
+          <small>Baseline · Ridge · Gradient Boosting · Ensemble</small>
         </div>
       </section>
 
@@ -2578,7 +2938,15 @@ export default function QualyPredictor() {
                     ? "Sin validar"
                     : "Baseline"}
               </strong>
-              <small>{prediction.validation.samples} observaciones de prueba</small>
+              <small>
+                {prediction.validation.samples} observaciones · ranking ±
+                {prediction.validation.positionMae !== null
+                  ? prediction.validation.positionMae.toFixed(2)
+                  : "—"} pos. · Top 3{" "}
+                {prediction.validation.top3Rate !== null
+                  ? Math.round(prediction.validation.top3Rate * 100)
+                  : 0}%
+              </small>
             </article>
 
             <article>
@@ -2779,15 +3147,17 @@ export default function QualyPredictor() {
               <span>MÉTODO</span>
               <h2>El modelo predice gap a pole, no una posición fija.</h2>
               <p>
-                Ridge Regression estima el gap esperado de cada piloto. Después
-                se ordenan los tiempos y 450 simulaciones alrededor del error
-                histórico generan las probabilidades.
+                GridPulse valida cada alternativa por error de tiempo y por
+                calidad del ranking. Puede elegir baseline, Ridge, Gradient
+                Boosting o un ensemble; después 450 simulaciones alrededor del
+                error histórico generan las probabilidades.
               </p>
             </div>
 
             <div className="qualy-method-features">
               <span>Variables actuales</span>
               <strong>Short runs de vuelta rápida</strong>
+              <strong>Vuelta teórica por mejores sectores</strong>
               <strong>Long runs separados del ritmo de qualy</strong>
               <strong>Compuesto, edad de neumático y stint</strong>
               <strong>Evolución de pista durante la práctica</strong>
