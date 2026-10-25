@@ -4,7 +4,7 @@ import "./QualyPredictor.css";
 const OPENF1 = "/api/openf1";
 const JOLPICA = "https://api.jolpi.ca/ergast/f1";
 const YEARS = [2025, 2026];
-const TRAINING_EVENTS = 6;
+const TRAINING_EVENTS = 10;
 const REQUEST_GAP_MS = 1350;
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const FEATURE_KEYS = [
@@ -24,6 +24,10 @@ const FEATURE_KEYS = [
   "qualyPriorStrength",
   "qualyPriorPosition",
   "qualyPriorMomentum",
+  "latestQualyGap",
+  "latestTheoreticalGap",
+  "shortRunSpread",
+  "topSpeedDeficit",
 ];
 
 const RANK_FEATURE_KEYS = [
@@ -41,6 +45,10 @@ const RANK_FEATURE_KEYS = [
   "qualyPriorStrength",
   "qualyPriorPosition",
   "qualyPriorMomentum",
+  "latestQualyGap",
+  "latestTheoreticalGap",
+  "shortRunSpread",
+  "topSpeedDeficit",
 ];
 
 const TRACK_PROFILES = {
@@ -296,7 +304,7 @@ function raceStartTimestamp(race) {
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-function buildQualyPriors(races, cutoffTimestamp) {
+function buildQualyPriors(races, cutoffTimestamp, season = null) {
   const usable = (races || [])
     .map((race) => ({
       ...race,
@@ -306,6 +314,8 @@ function buildQualyPriors(races, cutoffTimestamp) {
       (race) =>
         Number.isFinite(race.timestamp) &&
         race.timestamp < cutoffTimestamp &&
+        (!Number.isFinite(Number(season)) ||
+          Number(race.season) === Number(season)) &&
         Array.isArray(race.QualifyingResults)
     )
     .sort((a, b) => a.timestamp - b.timestamp)
@@ -685,6 +695,13 @@ function cleanResults(rows) {
     .map((row) => ({
       ...row,
       durationValue: lastFinite(row.duration),
+      phaseCount: Array.isArray(row.duration)
+        ? row.duration
+            .map((value) => safeNumber(value))
+            .filter(Number.isFinite).length
+        : plausibleLapTime(row.duration)
+          ? 1
+          : 0,
       positionValue: safeNumber(row.position),
       lapsValue: safeNumber(row.number_of_laps, 0),
     }))
@@ -897,6 +914,20 @@ function analyzePracticeSession(session, laps, stints, drivers) {
       return scoreA - scoreB;
     })[0];
 
+    const shortRunDurations = [...candidates]
+      .map((lap) => lap.adjustedDuration)
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b)
+      .slice(0, 3);
+
+    const shortRunSpread =
+      shortRunDurations.length >= 2
+        ? median(
+            shortRunDurations,
+            shortRunDurations[0]
+          ) - shortRunDurations[0]
+        : 0.35;
+
     const shortRunConfidence = qualyLap
       ? clamp(
           0.18 +
@@ -947,6 +978,7 @@ function analyzePracticeSession(session, laps, stints, drivers) {
       selectedTyreAge: qualyLap ? qualyLap.tyreAge : null,
       selectedStintLength: qualyLap ? qualyLap.stintLength : null,
       shortRunConfidence,
+      shortRunSpread: clamp(shortRunSpread, 0, 2),
       longRunDuration: longRunCandidates.length
         ? Math.min(...longRunCandidates)
         : null,
@@ -1220,11 +1252,15 @@ function practiceMetrics(bundle) {
           longRunGap: 0,
           longRunWeight: 0,
           shortRunConfidence: 0,
+          shortRunSpread: 0,
           teammateDelta: 0,
           trackEvolutionExposure: 0,
           practiceLaps: 0,
           topSpeed: 0,
           latestRawDuration: null,
+          latestQualyGap: null,
+          latestTheoreticalGap: null,
+          latestShortRunSpread: null,
           selectedCompound: "UNKNOWN",
           selectedTyreAge: null,
           driver: item.driver,
@@ -1240,6 +1276,10 @@ function practiceMetrics(bundle) {
           ? item.theoreticalGap
           : item.qualyGap) * weight;
       target.shortRunConfidence += item.shortRunConfidence * weight;
+      target.shortRunSpread +=
+        (Number.isFinite(item.shortRunSpread)
+          ? item.shortRunSpread
+          : 0.35) * weight;
       target.teammateDelta += item.teammateDelta * weight;
       target.trackEvolutionExposure +=
         item.trackEvolutionExposure * weight;
@@ -1253,6 +1293,11 @@ function practiceMetrics(bundle) {
 
       if (index === analyses.length - 1) {
         target.latestRawDuration = item.qualyRawDuration;
+        target.latestQualyGap = item.qualyGap;
+        target.latestTheoreticalGap =
+          item.theoreticalGap;
+        target.latestShortRunSpread =
+          item.shortRunSpread;
         target.selectedCompound = item.selectedCompound;
         target.selectedTyreAge = item.selectedTyreAge;
       }
@@ -1260,6 +1305,15 @@ function practiceMetrics(bundle) {
   });
 
   const rows = [];
+  const fieldTopSpeed = Math.max(
+    1,
+    ...[...totals.values()]
+      .map((item) => item.topSpeed)
+      .filter(
+        (value) =>
+          Number.isFinite(value) && value > 0
+      )
+  );
 
   totals.forEach((item, driverNumber) => {
     const weight = Math.max(item.weight, 0.001);
@@ -1273,7 +1327,29 @@ function practiceMetrics(bundle) {
         item.longRunWeight > 0
           ? item.longRunGap / item.longRunWeight
           : null,
-      shortRunConfidence: item.shortRunConfidence / weight,
+      shortRunConfidence:
+        item.shortRunConfidence / weight,
+      shortRunSpread:
+        Number.isFinite(item.latestShortRunSpread)
+          ? item.latestShortRunSpread
+          : item.shortRunSpread / weight,
+      latestQualyGap:
+        Number.isFinite(item.latestQualyGap)
+          ? item.latestQualyGap
+          : item.qualyPaceGap / weight,
+      latestTheoreticalGap:
+        Number.isFinite(item.latestTheoreticalGap)
+          ? item.latestTheoreticalGap
+          : item.theoreticalGap / weight,
+      topSpeedDeficit:
+        item.topSpeed > 0
+          ? clamp(
+              (fieldTopSpeed - item.topSpeed) /
+                fieldTopSpeed,
+              0,
+              0.2
+            )
+          : 0.04,
       teammateDelta: item.teammateDelta / weight,
       trackEvolutionExposure:
         item.trackEvolutionExposure / weight,
@@ -1588,8 +1664,15 @@ function qualifyingMetrics(bundle) {
       bundle.qualifyingRows.map((row) => [
         Number(row.driver_number),
         {
-          gap: Math.max(0, row.durationValue - pole.durationValue),
+          gap: Math.max(
+            0,
+            row.durationValue - pole.durationValue
+          ),
           position: row.positionValue,
+          phaseCount: row.phaseCount || 0,
+          gapComparable:
+            row.positionValue <= 10 &&
+            (row.phaseCount || 0) >= 3,
         },
       ])
     ),
@@ -1644,7 +1727,8 @@ function buildTraining(bundles, qualyHistory = []) {
 
     const eventPriors = buildQualyPriors(
       qualyHistory,
-      bundle.meeting.startDate
+      bundle.meeting.startDate,
+      bundle.meeting.year
     );
 
     const globalGap = average(globalGaps, 0.85);
@@ -1674,6 +1758,22 @@ function buildTraining(bundles, qualyHistory = []) {
           : p.qualyPaceGap,
         practicePosition: (p.position - 1) / 21,
         shortRunConfidence: p.shortRunConfidence,
+        latestQualyGap:
+          Number.isFinite(p.latestQualyGap)
+            ? p.latestQualyGap
+            : p.qualyPaceGap,
+        latestTheoreticalGap:
+          Number.isFinite(p.latestTheoreticalGap)
+            ? p.latestTheoreticalGap
+            : p.theoreticalGap,
+        shortRunSpread:
+          Number.isFinite(p.shortRunSpread)
+            ? p.shortRunSpread
+            : 0.35,
+        topSpeedDeficit:
+          Number.isFinite(p.topSpeedDeficit)
+            ? p.topSpeedDeficit
+            : 0.04,
         longRunGap: Number.isFinite(p.longRunGap)
           ? p.longRunGap
           : teamFallback,
@@ -1701,6 +1801,9 @@ function buildTraining(bundles, qualyHistory = []) {
         selectedTyreAge: p.selectedTyreAge,
         targetGap: target.gap,
         targetPosition: target.position,
+        gapComparable: Boolean(
+          target.gapComparable
+        ),
       });
     });
 
@@ -1720,11 +1823,13 @@ function buildTraining(bundles, qualyHistory = []) {
       rows.push({
         ...row,
         historicalBaseGap: row.predictedGap,
-        residualTarget: clamp(
-          row.targetGap - row.predictedGap,
-          -1.5,
-          1.5
-        ),
+        residualTarget: row.gapComparable
+          ? clamp(
+              row.targetGap - row.predictedGap,
+              -1.5,
+              1.5
+            )
+          : null,
       });
     });
 
@@ -1792,6 +1897,22 @@ function makeTargetRows(bundle, state) {
         practicePosition: (p.position - 1) / 21,
         practicePositionRaw: p.position,
         shortRunConfidence: p.shortRunConfidence,
+        latestQualyGap:
+          Number.isFinite(p.latestQualyGap)
+            ? p.latestQualyGap
+            : p.qualyPaceGap,
+        latestTheoreticalGap:
+          Number.isFinite(p.latestTheoreticalGap)
+            ? p.latestTheoreticalGap
+            : p.theoreticalGap,
+        shortRunSpread:
+          Number.isFinite(p.shortRunSpread)
+            ? p.shortRunSpread
+            : 0.35,
+        topSpeedDeficit:
+          Number.isFinite(p.topSpeedDeficit)
+            ? p.topSpeedDeficit
+            : 0.04,
         longRunGap: Number.isFinite(p.longRunGap)
           ? p.longRunGap
           : teamFallback,
@@ -2746,9 +2867,11 @@ function temporalValidation(training) {
     const bucket = buckets[type];
 
     rows.forEach((row) => {
-      bucket.gapErrors.push(
-        Math.abs(row.predictedGap - row.targetGap)
-      );
+      if (row.gapComparable) {
+        bucket.gapErrors.push(
+          Math.abs(row.predictedGap - row.targetGap)
+        );
+      }
     });
 
     const rank = rankMetrics(rows);
@@ -3633,21 +3756,12 @@ export default function QualyPredictor() {
       const previous = meetings
         .filter(
           (meeting) =>
+            meeting.year === selectedMeeting.year &&
             meeting.startDate < selectedMeeting.startDate &&
             qualifyingSession(meeting) &&
             practicesBeforeQualy(meeting, false).length > 0
         )
         .slice(-TRAINING_EVENTS);
-
-      const circuitReferenceMeeting = [...meetings]
-        .filter(
-          (meeting) =>
-            meeting.startDate < selectedMeeting.startDate &&
-            circuitKey(meeting) === circuitKey(selectedMeeting) &&
-            qualifyingSession(meeting) &&
-            practicesBeforeQualy(meeting, false).length > 0
-        )
-        .sort((a, b) => b.startDate - a.startDate)[0];
 
       if (previous.length < 3) {
         throw new Error(
@@ -3697,36 +3811,6 @@ export default function QualyPredictor() {
         );
       }
 
-      let circuitReferenceBundle = null;
-
-      if (circuitReferenceMeeting) {
-        const alreadyLoaded = historicalBundles.find(
-          (bundle) =>
-            Number(bundle.meeting.meeting_key) ===
-            Number(circuitReferenceMeeting.meeting_key)
-        );
-
-        if (alreadyLoaded) {
-          circuitReferenceBundle = alreadyLoaded;
-        } else {
-          setProgress(
-            "Calibrando pole con " +
-              circuitReferenceMeeting.country_name +
-              " " +
-              circuitReferenceMeeting.year +
-              "…"
-          );
-
-          try {
-            circuitReferenceBundle = await loadPoleReference(
-              circuitReferenceMeeting
-            );
-          } catch {
-            // La referencia del mismo trazado mejora la pole, pero no es obligatoria.
-          }
-        }
-      }
-
       setProgress(
         "Leyendo " + selectedMeeting.country_name + ": prácticas, stints y vueltas representativas…"
       );
@@ -3738,7 +3822,8 @@ export default function QualyPredictor() {
       const qualyHistory = await loadQualifyingHistory();
       const qualyPriors = buildQualyPriors(
         qualyHistory,
-        selectedMeeting.startDate
+        selectedMeeting.startDate,
+        selectedMeeting.year
       );
 
       setProgress("Validando tiempos y Pairwise Ranker…");
@@ -3748,7 +3833,7 @@ export default function QualyPredictor() {
         historicalBundles,
         qualyPriors,
         qualyHistory,
-        circuitReferenceBundle
+        null
       );
       setPrediction(result);
       setSelectedDriver(result.predictions[0] && result.predictions[0].driverNumber);
@@ -3856,7 +3941,7 @@ export default function QualyPredictor() {
               <span>Entrenamiento</span>
               <strong>{prediction.trainingRows}</strong>
               <small>
-                {prediction.trainingEvents} GP · {prediction.modelActive
+                {prediction.trainingEvents} GP 2026 · {prediction.modelActive
                   ? prediction.modelSamples + " muestras · " + prediction.selectedModelLabel
                   : "baseline histórico elegido"}
               </small>
@@ -4112,7 +4197,7 @@ export default function QualyPredictor() {
               <span>Variables actuales</span>
               <strong>Short runs de vuelta rápida</strong>
               <strong>Vuelta teórica por mejores sectores</strong>
-              <strong>Delta práctica → qualy calibrado por circuito</strong>
+              <strong>Delta práctica → qualy calibrado con GP 2026</strong>
               <strong>Mayor peso de FP3 y penalización de sesiones mojadas</strong>
               <strong>Long runs separados del ritmo de qualy</strong>
               <strong>Compuesto, edad de neumático y stint</strong>
@@ -4122,6 +4207,7 @@ export default function QualyPredictor() {
               <strong>Historial reciente de pole / primera fila / Q3</strong>
               <strong>Forma de qualy ponderada por recencia</strong>
               <strong>Pairwise Ranker con foco extra en Top 3</strong>
+              <strong>FP3, consistencia y velocidad relativa del coche</strong>
               <strong>Encaje con circuitos similares</strong>
             </div>
           </section>
