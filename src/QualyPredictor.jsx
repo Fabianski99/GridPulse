@@ -635,8 +635,11 @@ async function loadBundle(meeting, target) {
   );
 
   const analyses = [];
+  const practicesToAnalyze = target
+    ? practices
+    : [practices[practices.length - 1]];
 
-  for (const practice of practices) {
+  for (const practice of practicesToAnalyze) {
     const [laps, stints] = await Promise.all([
       openF1("laps", { session_key: practice.session_key }, false),
       openF1("stints", { session_key: practice.session_key }, false),
