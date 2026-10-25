@@ -1032,6 +1032,7 @@ function fitRidge(rows, lambda = 0.85) {
   };
 }
 
+
 function predictGap(model, row) {
   const vector = [
     1,
@@ -1047,6 +1048,59 @@ function predictGap(model, row) {
   );
 }
 
+function baselineGap(row) {
+  const confidence = clamp(row.shortRunConfidence || 0.4, 0.15, 1);
+  const longRun = Number.isFinite(row.longRunGap)
+    ? row.longRunGap
+    : row.teamFormGap;
+  const teammatePenalty = clamp(row.teammateDelta || 0, -0.8, 0.8);
+
+  const practiceWeight = 0.24 + confidence * 0.14;
+  const teamWeight = 0.28;
+  const driverWeight = 0.12;
+  const trackWeight = 0.1;
+  const longRunWeight = 0.06;
+  const teammateWeight = 0.08;
+  const total =
+    practiceWeight +
+    teamWeight +
+    driverWeight +
+    trackWeight +
+    longRunWeight +
+    teammateWeight;
+
+  return Math.max(
+    0,
+    (
+      row.qualyPaceGap * practiceWeight +
+      row.teamFormGap * teamWeight +
+      row.driverFormGap * driverWeight +
+      row.trackFitGap * trackWeight +
+      longRun * longRunWeight +
+      Math.max(0, teammatePenalty) * teammateWeight
+    ) / total
+  );
+}
+
+function blendedPrediction(model, row) {
+  const baseline = baselineGap(row);
+  const mlRaw = predictGap(model, row);
+
+  const mlClipped = clamp(
+    mlRaw,
+    Math.max(0, baseline - 0.45),
+    baseline + 0.45
+  );
+
+  const confidence = clamp(row.shortRunConfidence || 0.4, 0.15, 1);
+  const mlWeight = 0.34 + confidence * 0.16;
+
+  return Math.max(
+    0,
+    baseline * (1 - mlWeight) + mlClipped * mlWeight
+  );
+}
+
 function temporalValidation(training) {
   const events = [...new Set(training.rows.map((row) => row.eventIndex))];
   const errors = [];
@@ -1059,7 +1113,7 @@ function temporalValidation(training) {
     if (!model) return;
 
     test.forEach((row) => {
-      const prediction = Math.max(0, predictGap(model, row));
+      const prediction = blendedPrediction(model, row);
       errors.push(Math.abs(prediction - row.targetGap));
     });
   });
@@ -1162,60 +1216,118 @@ function percentileScore(value, values) {
   return Math.round((better / valid.length) * 100);
 }
 
+
 function buildFactors(item, predictions, practiceName, profileLabel) {
   const factors = [];
-  const formMedian = median(
-    predictions.map((row) => row.driverFormGap),
+  const teamMedian = median(
+    predictions.map((row) => row.teamFormGap),
     0.8
   );
 
-  if (item.practicePositionRaw <= 3) {
+  if (item.shortRunConfidence >= 0.72) {
     factors.push({
       type: "positive",
-      text: "Ritmo fuerte: P" + item.practicePositionRaw + " en " + practiceName + ".",
+      text:
+        "Short run de qualy bien identificado" +
+        (item.selectedCompound && item.selectedCompound !== "UNKNOWN"
+          ? " con " + item.selectedCompound
+          : "") +
+        ".",
     });
-  } else if (item.practicePositionRaw >= 12) {
-    factors.push({
-      type: "negative",
-      text: "La mejor vuelta de práctica queda en P" + item.practicePositionRaw + ".",
-    });
-  }
-
-  if (item.driverFormGap <= formMedian - 0.12) {
-    factors.push({
-      type: "positive",
-      text: "La forma reciente del piloto favorece la predicción.",
-    });
-  } else if (item.driverFormGap >= formMedian + 0.18) {
-    factors.push({
-      type: "negative",
-      text: "La forma reciente en clasificación penaliza la estimación.",
-    });
-  }
-
-  if (item.trackFitGap <= item.teamFormGap - 0.08) {
-    factors.push({
-      type: "positive",
-      text: "El equipo suele rendir mejor en pistas de perfil " + profileLabel.toLowerCase() + ".",
-    });
-  } else if (item.trackFitGap >= item.teamFormGap + 0.12) {
-    factors.push({
-      type: "negative",
-      text: "Este tipo de pista no ha sido el mejor contexto reciente del equipo.",
-    });
-  }
-
-  if (item.practiceLaps < 0.25) {
+  } else if (item.shortRunConfidence < 0.45) {
     factors.push({
       type: "warning",
-      text: "Hay pocas vueltas representativas; la incertidumbre aumenta.",
+      text:
+        "No hay una simulación de qualy clara; la práctica pesa menos en la predicción.",
+    });
+  }
+
+  if (item.qualyPaceGap <= 0.25) {
+    factors.push({
+      type: "positive",
+      text:
+        "Ritmo corregido de short run a +" +
+        item.qualyPaceGap.toFixed(3) +
+        " s del mejor.",
+    });
+  } else if (item.qualyPaceGap >= 1.0) {
+    factors.push({
+      type: "negative",
+      text:
+        "El ritmo de short run queda a +" +
+        item.qualyPaceGap.toFixed(3) +
+        " s del mejor.",
+    });
+  }
+
+  if (item.teamFormGap <= teamMedian - 0.15) {
+    factors.push({
+      type: "positive",
+      text:
+        "El coche/equipo llega con una forma reciente de clasificación fuerte.",
+    });
+  } else if (item.teamFormGap >= teamMedian + 0.2) {
+    factors.push({
+      type: "negative",
+      text:
+        "La forma reciente del coche/equipo limita una subida artificial por una sola práctica.",
+    });
+  }
+
+  if (item.teammateDelta <= -0.12) {
+    factors.push({
+      type: "positive",
+      text:
+        "Está siendo claramente más rápido que su compañero en los short runs.",
+    });
+  } else if (item.teammateDelta >= 0.18) {
+    factors.push({
+      type: "negative",
+      text:
+        "Su compañero está mostrando mejor ritmo de vuelta rápida.",
+    });
+  }
+
+  if (
+    Number.isFinite(item.longRunGap) &&
+    item.longRunGap <= 0.35 &&
+    factors.length < 3
+  ) {
+    factors.push({
+      type: "positive",
+      text:
+        "El ritmo de tandas largas también confirma una base competitiva del coche.",
+    });
+  }
+
+  if (
+    Math.abs(item.trackEvolutionExposure) >= 0.12 &&
+    factors.length < 3
+  ) {
+    factors.push({
+      type: "neutral",
+      text:
+        "GridPulse corrigió aproximadamente " +
+        Math.abs(item.trackEvolutionExposure).toFixed(2) +
+        " s por evolución de pista en su vuelta representativa.",
+    });
+  }
+
+  if (item.trackFitGap <= item.teamFormGap - 0.08 && factors.length < 3) {
+    factors.push({
+      type: "positive",
+      text:
+        "El equipo suele rendir mejor en pistas de perfil " +
+        profileLabel.toLowerCase() +
+        ".",
     });
   }
 
   if (!factors.length) {
     factors.push({
       type: "neutral",
-      text: "El resultado se apoya principalmente en ritmo de práctica y forma reciente.",
+      text:
+        "La estimación combina short runs, forma del coche, compañero y ritmo reciente.",
     });
   }
 
@@ -1227,20 +1339,26 @@ function buildPrediction(targetBundle, historicalBundles) {
   const model = fitRidge(training.rows);
 
   if (!model) {
-    throw new Error("Todavía no hay suficientes observaciones para entrenar el prototipo.");
+    throw new Error(
+      "Todavía no hay suficientes observaciones para entrenar el prototipo."
+    );
   }
 
   const validation = temporalValidation(training);
   const target = makeTargetRows(targetBundle, training.state);
 
   if (!target.length) {
-    throw new Error("No hay suficientes pilotos con tiempos válidos de práctica.");
+    throw new Error(
+      "No hay suficientes pilotos con vueltas representativas de práctica."
+    );
   }
 
   let predictions = target
     .map((row) => ({
       ...row,
-      predictedGap: Math.max(0, predictGap(model, row)),
+      modelGap: predictGap(model, row),
+      baselineGap: baselineGap(row),
+      predictedGap: blendedPrediction(model, row),
     }))
     .filter((row) => Number.isFinite(row.predictedGap));
 
@@ -1257,7 +1375,7 @@ function buildPrediction(targetBundle, historicalBundles) {
     .map((bundle) => {
       const practice = practiceMetrics(bundle);
       const qualifying = qualifyingMetrics(bundle);
-      return practice && qualifying
+      return practice && qualifying && Number.isFinite(practice.leader)
         ? qualifying.poleDuration / practice.leader
         : null;
     })
@@ -1265,33 +1383,47 @@ function buildPrediction(targetBundle, historicalBundles) {
 
   const targetPractice = practiceMetrics(targetBundle);
   const estimatedPole =
-    targetPractice.leader * median(ratios, 0.985);
-  const sigma = Math.max(validation.mae || 0.22, 0.1);
+    targetPractice && Number.isFinite(targetPractice.leader)
+      ? targetPractice.leader * median(ratios, 0.985)
+      : null;
+
+  const sigma = Math.max(validation.mae || 0.24, 0.12);
   const probabilities = calculateProbabilities(
     predictions,
-    sigma * 1.1,
+    sigma * 1.08,
     Number(targetBundle.meeting.meeting_key) * 97
   );
 
   const profileLabel =
     PROFILE_LABELS[targetBundle.profile] || PROFILE_LABELS.balanced;
-  const practiceName = targetBundle.practice.session_name;
+
+  const practiceName =
+    targetPractice && targetPractice.sessionNames.length
+      ? targetPractice.sessionNames.join(" + ")
+      : targetBundle.practice.session_name;
 
   predictions = predictions.map((row, index) => ({
     ...row,
     predictedPosition: index + 1,
-    estimatedTime: estimatedPole + row.predictedGap,
+    estimatedTime: Number.isFinite(estimatedPole)
+      ? estimatedPole + row.predictedGap
+      : null,
     probabilities: probabilities.get(row.driverNumber),
     color: driverColor(row.driver, index),
   }));
 
   predictions = predictions.map((row) => ({
     ...row,
-    factors: buildFactors(row, predictions, practiceName, profileLabel),
+    factors: buildFactors(
+      row,
+      predictions,
+      practiceName,
+      profileLabel
+    ),
     scores: {
       practice: percentileScore(
-        row.practiceGap,
-        predictions.map((item) => item.practiceGap)
+        row.qualyPaceGap,
+        predictions.map((item) => item.qualyPaceGap)
       ),
       driver: percentileScore(
         row.driverFormGap,
@@ -1326,6 +1458,7 @@ function buildPrediction(targetBundle, historicalBundles) {
 
     if (compared.length) {
       const predictedTop3 = compared.filter((row) => row.predicted <= 3);
+
       backtest = {
         positionMae: average(
           compared.map((row) => Math.abs(row.predicted - row.actual)),
@@ -1342,12 +1475,17 @@ function buildPrediction(targetBundle, historicalBundles) {
     }
   }
 
+  const averageConfidence = average(
+    predictions.map((row) => row.shortRunConfidence),
+    0.45
+  );
+
   const confidence = clamp(
     Math.round(
-      88 -
-        (validation.mae || 0.25) * 45 -
-        Math.max(0, 4 - historicalBundles.length) * 8 -
-        (practiceQuality(practiceName) < 0.8 ? 7 : 0)
+      82 -
+        (validation.mae || 0.28) * 38 -
+        Math.max(0, 4 - historicalBundles.length) * 7 +
+        averageConfidence * 10
     ),
     35,
     88
@@ -1363,6 +1501,13 @@ function buildPrediction(targetBundle, historicalBundles) {
     profileLabel,
     trainingEvents: historicalBundles.length,
     trainingRows: training.rows.length,
+    shortRuns: targetPractice ? targetPractice.shortRuns : 0,
+    longRuns: targetPractice ? targetPractice.longRuns : 0,
+    trackEvolution: targetPractice ? targetPractice.evolution : 0,
+    practiceSessions:
+      targetPractice && targetPractice.sessionNames
+        ? targetPractice.sessionNames
+        : [],
   };
 }
 
