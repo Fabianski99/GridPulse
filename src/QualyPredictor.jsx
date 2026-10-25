@@ -1022,37 +1022,62 @@ async function loadBundle(meeting, target) {
     false
   );
 
-  // Histórico y objetivo usan la misma información previa a clasificación.
-  // Agrupar las consultas por meeting evita multiplicar peticiones al añadir FP1/FP2/FP3.
-  const firstPracticeStart = practices[0].date_start;
-  const [meetingLaps, meetingStints] = await Promise.all([
-    openF1(
-      "laps",
-      {
-        meeting_key: meeting.meeting_key,
-        "date_start>=": firstPracticeStart,
-        "date_start<": qualifying.date_start,
-      },
-      false
-    ),
-    openF1(
+  // Los stints son livianos y se pueden recuperar por GP completo.
+  // Las vueltas se consultan por sesión para evitar respuestas históricas
+  // demasiado grandes a través del proxy de Vercel.
+  let meetingStints = [];
+
+  try {
+    meetingStints = await openF1(
       "stints",
       { meeting_key: meeting.meeting_key },
       false
-    ),
-  ]);
-
-  const analyses = practices.map((practice) => {
-    const sessionKey = Number(practice.session_key);
-    const laps = (meetingLaps || []).filter(
-      (lap) => Number(lap.session_key) === sessionKey
     );
-    const stints = (meetingStints || []).filter(
+  } catch {
+    meetingStints = [];
+  }
+
+  const analyses = [];
+
+  for (const practice of practices) {
+    const sessionKey = Number(practice.session_key);
+    const laps = await openF1(
+      "laps",
+      { session_key: sessionKey },
+      false
+    );
+
+    let stints = (meetingStints || []).filter(
       (stint) => Number(stint.session_key) === sessionKey
     );
 
-    return analyzePracticeSession(practice, laps, stints, drivers);
-  });
+    if (!stints.length) {
+      stints = await openF1(
+        "stints",
+        { session_key: sessionKey },
+        true
+      );
+    }
+
+    const analysis = analyzePracticeSession(
+      practice,
+      laps,
+      stints,
+      drivers
+    );
+
+    if (analysis.byDriver.size > 0) {
+      analyses.push(analysis);
+    }
+  }
+
+  if (!analyses.length) {
+    throw new Error(
+      "No se encontraron vueltas de práctica utilizables para " +
+        meeting.country_name +
+        "."
+    );
+  }
 
   const qualifyingFinished =
     new Date(qualifying.date_end).getTime() <= Date.now();
@@ -1067,6 +1092,14 @@ async function loadBundle(meeting, target) {
           )
         )
       : [];
+
+  if (!target && qualifyingRows.length < 10) {
+    throw new Error(
+      "La clasificación histórica de " +
+        meeting.country_name +
+        " está incompleta."
+    );
+  }
 
   return {
     meeting,
@@ -2770,6 +2803,7 @@ export default function QualyPredictor() {
       }
 
       const historicalBundles = [];
+      const historicalFailures = [];
 
       for (let index = 0; index < previous.length; index += 1) {
         const meeting = previous[index];
@@ -2784,14 +2818,29 @@ export default function QualyPredictor() {
 
         try {
           historicalBundles.push(await loadBundle(meeting, false));
-        } catch {
-          // Saltamos fines de semana históricos incompletos.
+        } catch (historyError) {
+          historicalFailures.push({
+            country: meeting.country_name,
+            reason:
+              historyError instanceof Error
+                ? historyError.message
+                : "Error de datos",
+          });
         }
       }
 
       if (historicalBundles.length < 3) {
+        const details = historicalFailures
+          .slice(0, 3)
+          .map(
+            (item) =>
+              item.country + ": " + item.reason
+          )
+          .join(" · ");
+
         throw new Error(
-          "No se pudieron recuperar suficientes GP históricos completos."
+          "No se pudieron recuperar suficientes GP históricos completos." +
+            (details ? " " + details : "")
         );
       }
 
