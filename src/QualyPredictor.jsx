@@ -1405,6 +1405,53 @@ function solveLinearSystem(matrix, vector) {
   return augmented.map((row) => row[n] || 0);
 }
 
+
+function baselineGap(row) {
+  const confidence = clamp(row.shortRunConfidence || 0.4, 0.15, 1);
+  const longRun = Number.isFinite(row.longRunGap)
+    ? row.longRunGap
+    : row.teamFormGap;
+  const teammatePenalty = clamp(
+    row.teammateDelta || 0,
+    -0.8,
+    0.8
+  );
+
+  const practiceWeight = 0.22 + confidence * 0.13;
+  const teamWeight = 0.24;
+  const driverWeight = 0.14;
+  const trackWeight = 0.09;
+  const longRunWeight = 0.05;
+  const teammateWeight = 0.07;
+  const evolutionWeight = 0.08;
+  const trendWeight = 0.11;
+
+  const total =
+    practiceWeight +
+    teamWeight +
+    driverWeight +
+    trackWeight +
+    longRunWeight +
+    teammateWeight +
+    evolutionWeight +
+    trendWeight;
+
+  return clamp(
+    (
+      row.qualyPaceGap * practiceWeight +
+      row.teamFormGap * teamWeight +
+      row.driverFormGap * driverWeight +
+      row.trackFitGap * trackWeight +
+      longRun * longRunWeight +
+      Math.max(0, teammatePenalty) * teammateWeight +
+      Math.max(0, row.teamFormGap + row.teamTrend) * evolutionWeight +
+      Math.max(0, row.teamTrend + 0.15) * trendWeight
+    ) / total,
+    0,
+    4.5
+  );
+}
+
 function fitRidge(rows, lambda = 1.1, targetKey = "residualTarget") {
   const validRows = (rows || []).filter(
     (row) =>
