@@ -583,9 +583,18 @@ function trackProfile(meeting) {
 function practiceSessionWeight(name, index, total) {
   if (total <= 1) return 1;
   if (/Practice 3/i.test(name || "")) return 1;
-  if (/Practice 2/i.test(name || "")) return 0.72;
-  if (/Practice 1/i.test(name || "")) return 0.48;
-  return 0.45 + (index / Math.max(1, total - 1)) * 0.45;
+  if (/Practice 2/i.test(name || "")) return 0.55;
+  if (/Practice 1/i.test(name || "")) return 0.25;
+  return 0.35 + (index / Math.max(1, total - 1)) * 0.55;
+}
+
+function circuitKey(meeting) {
+  return normalizeText(
+    (meeting && meeting.circuit_short_name) ||
+      (meeting && meeting.location) ||
+      (meeting && meeting.country_name) ||
+      ""
+  );
 }
 
 function groupMeetings(sessions) {
@@ -790,8 +799,16 @@ function analyzePracticeSession(session, laps, stints, drivers) {
       byDriver: new Map(),
       leaderQualy: null,
       leaderLongRun: null,
+      wetLapShare: 0,
     };
   }
+
+  const wetLaps = clean.filter(
+    (lap) =>
+      lap.compound === "INTERMEDIATE" ||
+      lap.compound === "WET"
+  ).length;
+  const wetLapShare = wetLaps / clean.length;
 
   const grouped = new Map();
 
@@ -1000,6 +1017,7 @@ function analyzePracticeSession(session, laps, stints, drivers) {
     leaderRawQualy,
     leaderTheoretical,
     leaderLongRun,
+    wetLapShare,
   };
 }
 
@@ -1022,9 +1040,6 @@ async function loadBundle(meeting, target) {
     false
   );
 
-  // Los stints son livianos y se pueden recuperar por GP completo.
-  // Las vueltas se consultan por sesión para evitar respuestas históricas
-  // demasiado grandes a través del proxy de Vercel.
   let meetingStints = [];
 
   try {
@@ -1113,6 +1128,48 @@ async function loadBundle(meeting, target) {
   };
 }
 
+async function loadPoleReference(meeting) {
+  const practices = practicesBeforeQualy(meeting, false);
+  const qualifying = qualifyingSession(meeting);
+
+  if (!practices.length || !qualifying) return null;
+
+  const latestPractice = practices[practices.length - 1];
+  const sessionKey = Number(latestPractice.session_key);
+
+  const [laps, stints, qualifyingRows] = await Promise.all([
+    openF1("laps", { session_key: sessionKey }, false),
+    openF1("stints", { session_key: sessionKey }, true),
+    openF1(
+      "session_result",
+      { session_key: qualifying.session_key },
+      false
+    ).then(cleanResults),
+  ]);
+
+  if (qualifyingRows.length < 10) return null;
+
+  const analysis = analyzePracticeSession(
+    latestPractice,
+    laps,
+    stints,
+    []
+  );
+
+  if (!analysis.byDriver.size) return null;
+
+  return {
+    meeting,
+    practices: [latestPractice],
+    practice: latestPractice,
+    practiceAnalyses: [analysis],
+    qualifying,
+    qualifyingRows,
+    drivers: [],
+    profile: trackProfile(meeting),
+  };
+}
+
 function practiceMetrics(bundle) {
   const analyses = bundle.practiceAnalyses || [];
   if (!analyses.length) return null;
@@ -1122,11 +1179,17 @@ function practiceMetrics(bundle) {
   let evolutionWeighted = 0;
 
   analyses.forEach((analysis, index) => {
-    const weight = practiceSessionWeight(
+    const baseWeight = practiceSessionWeight(
       analysis.session.session_name,
       index,
       analyses.length
     );
+    const wetPenalty = clamp(
+      1 - (analysis.wetLapShare || 0) * 0.88,
+      0.18,
+      1
+    );
+    const weight = baseWeight * wetPenalty;
 
     totalWeight += weight;
     evolutionWeighted += analysis.evolution * weight;
@@ -1212,7 +1275,19 @@ function practiceMetrics(bundle) {
     row.position = index + 1;
   });
 
-  const latestLeader = analyses[analyses.length - 1].leaderRawQualy;
+  const referenceAnalysis =
+    [...analyses]
+      .reverse()
+      .find(
+        (analysis) =>
+          (analysis.wetLapShare || 0) < 0.25 &&
+          plausibleLapTime(analysis.leaderRawQualy)
+      ) ||
+    analyses[analyses.length - 1];
+
+  const latestLeader = referenceAnalysis.leaderRawQualy;
+  const latestTheoreticalLeader =
+    referenceAnalysis.leaderTheoretical;
   const sessionNames = analyses.map(
     (analysis) => analysis.session.session_name
   );
@@ -1226,6 +1301,17 @@ function practiceMetrics(bundle) {
               .map((row) => row.latestRawDuration)
               .filter(Number.isFinite)
           ),
+    theoreticalLeader:
+      plausibleLapTime(latestTheoreticalLeader)
+        ? latestTheoreticalLeader
+        : null,
+    poleReferenceSession:
+      referenceAnalysis.session &&
+      referenceAnalysis.session.session_name
+        ? referenceAnalysis.session.session_name
+        : null,
+    poleReferenceWetShare:
+      referenceAnalysis.wetLapShare || 0,
     byDriver: new Map(rows.map((row) => [row.driverNumber, row])),
     rows,
     sessionNames,
@@ -1233,6 +1319,238 @@ function practiceMetrics(bundle) {
       totalWeight > 0 ? evolutionWeighted / totalWeight : 0,
     shortRuns: rows.filter((row) => row.shortRunConfidence >= 0.62).length,
     longRuns: rows.filter((row) => Number.isFinite(row.longRunGap)).length,
+  };
+}
+
+function robustWeightedMean(samples, fallback = null) {
+  const valid = (samples || []).filter(
+    (sample) =>
+      Number.isFinite(sample && sample.value) &&
+      Number.isFinite(sample && sample.weight) &&
+      sample.weight > 0
+  );
+
+  if (!valid.length) return fallback;
+
+  const center = median(
+    valid.map((sample) => sample.value),
+    fallback
+  );
+  const mad = median(
+    valid.map((sample) => Math.abs(sample.value - center)),
+    0
+  );
+  const tolerance = Math.max(0.45, mad * 3);
+
+  let filtered = valid.filter(
+    (sample) =>
+      Math.abs(sample.value - center) <= tolerance
+  );
+
+  if (filtered.length < Math.min(3, valid.length)) {
+    filtered = valid;
+  }
+
+  const totalWeight = filtered.reduce(
+    (sum, sample) => sum + sample.weight,
+    0
+  );
+
+  if (totalWeight <= 0) return center;
+
+  return filtered.reduce(
+    (sum, sample) => sum + sample.value * sample.weight,
+    0
+  ) / totalWeight;
+}
+
+function estimatePoleTime(
+  targetBundle,
+  targetPractice,
+  historicalBundles,
+  circuitReferenceBundle = null
+) {
+  const unique = new Map();
+
+  (historicalBundles || []).forEach((bundle, index) => {
+    if (!bundle || !bundle.meeting) return;
+    unique.set(Number(bundle.meeting.meeting_key), {
+      bundle,
+      order: index,
+      reference: false,
+    });
+  });
+
+  if (
+    circuitReferenceBundle &&
+    circuitReferenceBundle.meeting
+  ) {
+    const key = Number(
+      circuitReferenceBundle.meeting.meeting_key
+    );
+    const existing = unique.get(key);
+
+    unique.set(key, {
+      bundle: circuitReferenceBundle,
+      order: existing ? existing.order : unique.size,
+      reference: true,
+    });
+  }
+
+  const entries = [...unique.values()];
+  const rawSamples = [];
+  const theoreticalSamples = [];
+  let sameCircuitSamples = 0;
+
+  entries.forEach((entry, index) => {
+    const practice = practiceMetrics(entry.bundle);
+    const qualifying = qualifyingMetrics(entry.bundle);
+
+    if (
+      !practice ||
+      !qualifying ||
+      !plausibleLapTime(practice.leader) ||
+      !plausibleLapTime(qualifying.poleDuration)
+    ) {
+      return;
+    }
+
+    const sameCircuit =
+      circuitKey(entry.bundle.meeting) ===
+      circuitKey(targetBundle.meeting);
+    const sameProfile =
+      entry.bundle.profile === targetBundle.profile;
+
+    const recencyWeight =
+      entries.length <= 1
+        ? 1
+        : 0.72 + (index / (entries.length - 1)) * 0.38;
+    const circuitWeight = sameCircuit
+      ? 2.8
+      : sameProfile
+        ? 1.35
+        : 0.9;
+    const dryWeight = clamp(
+      1 - (practice.poleReferenceWetShare || 0) * 0.9,
+      0.15,
+      1
+    );
+    const weight =
+      recencyWeight *
+      circuitWeight *
+      dryWeight *
+      (entry.reference ? 1.15 : 1);
+
+    const rawDelta =
+      qualifying.poleDuration - practice.leader;
+
+    if (rawDelta >= -5 && rawDelta <= 2.5) {
+      rawSamples.push({
+        value: rawDelta,
+        weight,
+      });
+
+      if (sameCircuit) sameCircuitSamples += 1;
+    }
+
+    if (
+      plausibleLapTime(practice.theoreticalLeader)
+    ) {
+      const theoreticalDelta =
+        qualifying.poleDuration -
+        practice.theoreticalLeader;
+
+      if (
+        theoreticalDelta >= -5 &&
+        theoreticalDelta <= 2.5
+      ) {
+        theoreticalSamples.push({
+          value: theoreticalDelta,
+          weight,
+        });
+      }
+    }
+  });
+
+  const rawDelta = robustWeightedMean(
+    rawSamples,
+    -0.75
+  );
+  const theoreticalDelta = robustWeightedMean(
+    theoreticalSamples,
+    rawDelta
+  );
+
+  const rawEstimate =
+    targetPractice.leader + rawDelta;
+
+  const theoreticalAvailable =
+    plausibleLapTime(targetPractice.theoreticalLeader);
+  const theoreticalEstimate = theoreticalAvailable
+    ? targetPractice.theoreticalLeader +
+      theoreticalDelta
+    : rawEstimate;
+
+  const theoreticalGain = theoreticalAvailable
+    ? targetPractice.leader -
+      targetPractice.theoreticalLeader
+    : 0;
+  const theoreticalWeight = theoreticalAvailable
+    ? theoreticalGain >= 0 &&
+      theoreticalGain <= 1.2
+      ? 0.34
+      : 0.18
+    : 0;
+
+  const estimatedPole =
+    rawEstimate * (1 - theoreticalWeight) +
+    theoreticalEstimate * theoreticalWeight;
+
+  return {
+    estimatedPole,
+    rawDelta,
+    theoreticalDelta,
+    samples: rawSamples.length,
+    sameCircuitSamples,
+    theoreticalWeight,
+  };
+}
+
+function validatePoleEstimator(bundles) {
+  const errors = [];
+
+  for (let index = 2; index < (bundles || []).length; index += 1) {
+    const targetBundle = bundles[index];
+    const practice = practiceMetrics(targetBundle);
+    const actual = qualifyingMetrics(targetBundle);
+
+    if (
+      !practice ||
+      !actual ||
+      !plausibleLapTime(practice.leader)
+    ) {
+      continue;
+    }
+
+    const estimate = estimatePoleTime(
+      targetBundle,
+      practice,
+      bundles.slice(0, index),
+      null
+    );
+
+    if (plausibleLapTime(estimate.estimatedPole)) {
+      errors.push(
+        Math.abs(
+          estimate.estimatedPole - actual.poleDuration
+        )
+      );
+    }
+  }
+
+  return {
+    mae: average(errors, null),
+    samples: errors.length,
   };
 }
 
@@ -2386,7 +2704,8 @@ function buildPrediction(
   targetBundle,
   historicalBundles,
   qualyPriors = new Map(),
-  qualyHistory = []
+  qualyHistory = [],
+  circuitReferenceBundle = null
 ) {
   const training = buildTraining(
     historicalBundles,
@@ -2482,25 +2801,6 @@ function buildPrediction(
     };
   });
 
-  const ratios = historicalBundles
-    .map((bundle) => {
-      const practice = practiceMetrics(bundle);
-      const qualifying = qualifyingMetrics(bundle);
-
-      if (
-        !practice ||
-        !qualifying ||
-        !plausibleLapTime(practice.leader) ||
-        !plausibleLapTime(qualifying.poleDuration)
-      ) {
-        return null;
-      }
-
-      const ratio = qualifying.poleDuration / practice.leader;
-      return ratio >= 0.94 && ratio <= 1.04 ? ratio : null;
-    })
-    .filter(Number.isFinite);
-
   const targetPractice = practiceMetrics(targetBundle);
 
   if (
@@ -2512,8 +2812,16 @@ function buildPrediction(
     );
   }
 
-  const poleRatio = clamp(median(ratios, 0.985), 0.94, 1.04);
-  const estimatedPole = targetPractice.leader * poleRatio;
+  const poleEstimate = estimatePoleTime(
+    targetBundle,
+    targetPractice,
+    historicalBundles,
+    circuitReferenceBundle
+  );
+  const estimatedPole = poleEstimate.estimatedPole;
+  const poleValidation = validatePoleEstimator(
+    historicalBundles
+  );
 
   if (!plausibleLapTime(estimatedPole)) {
     throw new Error(
@@ -2607,6 +2915,10 @@ function buildPrediction(
           compared.map((row) => Math.abs(row.predicted - row.actual)),
           null
         ),
+        poleTimeError: Math.abs(
+          estimatedPole - actual.poleDuration
+        ),
+        actualPole: actual.poleDuration,
         top3Hits: predictedTop3.filter((row) => row.actual <= 3).length,
         positions: new Map(
           [...actual.byDriver.entries()].map(([number, row]) => [
@@ -2651,6 +2963,11 @@ function buildPrediction(
     0,
     1
   );
+  const poleConfidence = clamp(
+    1 - (poleValidation.mae ?? 0.7) / 1.1,
+    0,
+    1
+  );
   const dataConfidence = clamp(
     (historicalBundles.length / TRAINING_EVENTS) * 0.5 +
       averageConfidence * 0.3 +
@@ -2662,11 +2979,12 @@ function buildPrediction(
   const confidence = clamp(
     Math.round(
       (
-        rankingConfidence * 0.3 +
-        ndcgConfidence * 0.25 +
-        gapConfidence * 0.2 +
-        top3Confidence * 0.15 +
-        dataConfidence * 0.1
+        rankingConfidence * 0.28 +
+        ndcgConfidence * 0.22 +
+        gapConfidence * 0.18 +
+        top3Confidence * 0.14 +
+        poleConfidence * 0.1 +
+        dataConfidence * 0.08
       ) * 100
     ),
     35,
@@ -2679,6 +2997,8 @@ function buildPrediction(
     backtest,
     confidence,
     estimatedPole,
+    poleEstimate,
+    poleValidation,
     practiceName,
     profileLabel,
     trainingEvents: historicalBundles.length,
@@ -2796,6 +3116,16 @@ export default function QualyPredictor() {
         )
         .slice(-TRAINING_EVENTS);
 
+      const circuitReferenceMeeting = [...meetings]
+        .filter(
+          (meeting) =>
+            meeting.startDate < selectedMeeting.startDate &&
+            circuitKey(meeting) === circuitKey(selectedMeeting) &&
+            qualifyingSession(meeting) &&
+            practicesBeforeQualy(meeting, false).length > 0
+        )
+        .sort((a, b) => b.startDate - a.startDate)[0];
+
       if (previous.length < 3) {
         throw new Error(
           "El prototipo necesita al menos tres GP anteriores con prácticas y clasificación."
@@ -2844,6 +3174,36 @@ export default function QualyPredictor() {
         );
       }
 
+      let circuitReferenceBundle = null;
+
+      if (circuitReferenceMeeting) {
+        const alreadyLoaded = historicalBundles.find(
+          (bundle) =>
+            Number(bundle.meeting.meeting_key) ===
+            Number(circuitReferenceMeeting.meeting_key)
+        );
+
+        if (alreadyLoaded) {
+          circuitReferenceBundle = alreadyLoaded;
+        } else {
+          setProgress(
+            "Calibrando pole con " +
+              circuitReferenceMeeting.country_name +
+              " " +
+              circuitReferenceMeeting.year +
+              "…"
+          );
+
+          try {
+            circuitReferenceBundle = await loadPoleReference(
+              circuitReferenceMeeting
+            );
+          } catch {
+            // La referencia del mismo trazado mejora la pole, pero no es obligatoria.
+          }
+        }
+      }
+
       setProgress(
         "Leyendo " + selectedMeeting.country_name + ": prácticas, stints y vueltas representativas…"
       );
@@ -2864,7 +3224,8 @@ export default function QualyPredictor() {
         targetBundle,
         historicalBundles,
         qualyPriors,
-        qualyHistory
+        qualyHistory,
+        circuitReferenceBundle
       );
       setPrediction(result);
       setSelectedDriver(result.predictions[0] && result.predictions[0].driverNumber);
@@ -2994,7 +3355,10 @@ export default function QualyPredictor() {
                   : "—"} pos. · Top 3{" "}
                 {prediction.validation.top3Rate !== null
                   ? Math.round(prediction.validation.top3Rate * 100)
-                  : 0}%
+                  : 0}% · pole ±
+                {prediction.poleValidation.mae !== null
+                  ? prediction.poleValidation.mae.toFixed(3)
+                  : "—"} s
               </small>
             </article>
 
@@ -3053,6 +3417,12 @@ export default function QualyPredictor() {
                 <div>
                   <span>Top 3 acertados</span>
                   <strong>{prediction.backtest.top3Hits}/3</strong>
+                </div>
+                <div>
+                  <span>Error pole</span>
+                  <strong>
+                    {prediction.backtest.poleTimeError.toFixed(3)} s
+                  </strong>
                 </div>
               </div>
             </section>
@@ -3197,9 +3567,10 @@ export default function QualyPredictor() {
               <h2>El modelo predice gap a pole, no una posición fija.</h2>
               <p>
                 GridPulse valida cada alternativa por error de tiempo y por
-                calidad del ranking. Puede elegir baseline, Ridge, Gradient
-                Boosting o un ensemble; después 450 simulaciones alrededor del
-                error histórico generan las probabilidades.
+                calidad del ranking. La pole se estima aparte mediante el delta
+                entre práctica y clasificación, con mayor peso de FP3 y del
+                mismo circuito; después 450 simulaciones alrededor del error
+                histórico generan las probabilidades.
               </p>
             </div>
 
@@ -3207,6 +3578,8 @@ export default function QualyPredictor() {
               <span>Variables actuales</span>
               <strong>Short runs de vuelta rápida</strong>
               <strong>Vuelta teórica por mejores sectores</strong>
+              <strong>Delta práctica → qualy calibrado por circuito</strong>
+              <strong>Mayor peso de FP3 y penalización de sesiones mojadas</strong>
               <strong>Long runs separados del ritmo de qualy</strong>
               <strong>Compuesto, edad de neumático y stint</strong>
               <strong>Evolución de pista durante la práctica</strong>
