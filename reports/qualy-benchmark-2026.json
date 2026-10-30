@@ -1,0 +1,92 @@
+{
+  "year": 2026,
+  "source": "OpenF1 + Jolpica",
+  "baselineCommit": "2af6a430924550d208ea1e988dc7b9036a9aadd1",
+  "results": [
+    {
+      "meeting": "Spain",
+      "meetingKey": 1294,
+      "trainingEvents": 10,
+      "before": {
+        "positionMae": 2.95,
+        "poleTimeError": 0.21524336063176008,
+        "actualPole": 91.824,
+        "top3Hits": 1
+      },
+      "after": {
+        "positionMae": 2.75,
+        "poleTimeError": 0.09517625738594404,
+        "actualPole": 91.824,
+        "top3Hits": 1
+      }
+    },
+    {
+      "meeting": "Azerbaijan",
+      "meetingKey": 1295,
+      "trainingEvents": 10,
+      "before": {
+        "positionMae": 3.1818181818181817,
+        "poleTimeError": 0.42869912347326533,
+        "actualPole": 102.526,
+        "top3Hits": 1
+      },
+      "after": {
+        "positionMae": 3.3636363636363638,
+        "poleTimeError": 0.5759324585897758,
+        "actualPole": 102.526,
+        "top3Hits": 2
+      }
+    },
+    {
+      "meeting": "Bahrain",
+      "meetingKey": 1308,
+      "trainingEvents": 10,
+      "before": {
+        "positionMae": 3,
+        "poleTimeError": 0.04951313267434898,
+        "actualPole": 95.13,
+        "top3Hits": 0
+      },
+      "after": {
+        "positionMae": 3.090909090909091,
+        "poleTimeError": 0.09143738301658288,
+        "actualPole": 95.13,
+        "top3Hits": 0
+      }
+    },
+    {
+      "meeting": "Singapore",
+      "meetingKey": 1296,
+      "trainingEvents": 10,
+      "before": {
+        "positionMae": 1.9047619047619047,
+        "poleTimeError": 0.32009028968560926,
+        "actualPole": 91.373,
+        "top3Hits": 2
+      },
+      "after": {
+        "positionMae": 2,
+        "poleTimeError": 0.19936026895683767,
+        "actualPole": 91.373,
+        "top3Hits": 1
+      }
+    },
+    {
+      "meeting": "United States",
+      "meetingKey": 1297,
+      "trainingEvents": 10,
+      "before": {
+        "positionMae": 1.8181818181818181,
+        "poleTimeError": 0.3596626071643527,
+        "actualPole": 94.035,
+        "top3Hits": 1
+      },
+      "after": {
+        "positionMae": 1.4545454545454546,
+        "poleTimeError": 0.36009326513467954,
+        "actualPole": 94.035,
+        "top3Hits": 1
+      }
+    }
+  ]
+}

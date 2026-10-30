@@ -24,6 +24,7 @@ dist-ssr
 *.sw?
 
 .fastf1-cache/
+.qualy-cache/
 node_modules/
 dist/
 .DS_Store
