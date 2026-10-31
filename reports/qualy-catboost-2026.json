@@ -1,0 +1,451 @@
+{
+  "baselineCommit": "9cfe638a230ebe242920776947ddcb12b9015786",
+  "method": "Expanding chronological training; blend chosen on earlier out-of-sample events only",
+  "results": [
+    {
+      "key": 1288,
+      "name": "Austria",
+      "location": "Spielberg",
+      "trainingEvents": 4,
+      "blendWeight": 0,
+      "previous": {
+        "positionMae": 1.3636363636363635,
+        "poleTimeError": 0.2679604575751995,
+        "actualPole": 66.113,
+        "top3Hits": 1,
+        "positions": {}
+      },
+      "signalsOnly": {
+        "positionMae": 1.2727272727272727,
+        "top3Hits": 2,
+        "poleHit": 0,
+        "gapMae": 0.12864817254096397,
+        "ndcg": 0.9809319380850576,
+        "samples": 10
+      },
+      "catboostOnly": {
+        "positionMae": 1.9090909090909092,
+        "top3Hits": 0,
+        "poleHit": 0,
+        "gapMae": 0.17017622422106374,
+        "ndcg": 0.962370214301598,
+        "samples": 10
+      },
+      "selected": {
+        "positionMae": 1.2727272727272727,
+        "top3Hits": 2,
+        "poleHit": 0,
+        "gapMae": 0.12864817254096397,
+        "ndcg": 0.9809319380850576,
+        "samples": 10
+      }
+    },
+    {
+      "key": 1289,
+      "name": "United Kingdom",
+      "location": "Silverstone",
+      "trainingEvents": 5,
+      "blendWeight": 0,
+      "previous": {
+        "positionMae": 1.7272727272727273,
+        "poleTimeError": 0.38456811489788834,
+        "actualPole": 88.111,
+        "top3Hits": 2,
+        "positions": {}
+      },
+      "signalsOnly": {
+        "positionMae": 1.6363636363636365,
+        "top3Hits": 2,
+        "poleHit": 0,
+        "gapMae": 0.25928471647623874,
+        "ndcg": 0.9810574984711372,
+        "samples": 10
+      },
+      "catboostOnly": {
+        "positionMae": 1.4545454545454546,
+        "top3Hits": 2,
+        "poleHit": 0,
+        "gapMae": 0.29259310188311644,
+        "ndcg": 0.9818163290359759,
+        "samples": 10
+      },
+      "selected": {
+        "positionMae": 1.6363636363636365,
+        "top3Hits": 2,
+        "poleHit": 0,
+        "gapMae": 0.25928471647623874,
+        "ndcg": 0.9810574984711372,
+        "samples": 10
+      }
+    },
+    {
+      "key": 1290,
+      "name": "Belgium",
+      "location": "Spa-Francorchamps",
+      "trainingEvents": 6,
+      "blendWeight": 0,
+      "previous": {
+        "positionMae": 1.6363636363636365,
+        "poleTimeError": 0.7145861525188337,
+        "actualPole": 104.361,
+        "top3Hits": 1,
+        "positions": {}
+      },
+      "signalsOnly": {
+        "positionMae": 1.8181818181818181,
+        "top3Hits": 1,
+        "poleHit": 1,
+        "gapMae": 0.15955585417213855,
+        "ndcg": 0.9863755207021735,
+        "samples": 9
+      },
+      "catboostOnly": {
+        "positionMae": 1.5454545454545454,
+        "top3Hits": 1,
+        "poleHit": 1,
+        "gapMae": 0.11888084730827206,
+        "ndcg": 0.9887552884227677,
+        "samples": 9
+      },
+      "selected": {
+        "positionMae": 1.8181818181818181,
+        "top3Hits": 1,
+        "poleHit": 1,
+        "gapMae": 0.15955585417213855,
+        "ndcg": 0.9863755207021735,
+        "samples": 9
+      }
+    },
+    {
+      "key": 1291,
+      "name": "Hungary",
+      "location": "Budapest",
+      "trainingEvents": 7,
+      "blendWeight": 0,
+      "previous": {
+        "positionMae": 2,
+        "poleTimeError": 0.023273543313806044,
+        "actualPole": 77.207,
+        "top3Hits": 1,
+        "positions": {}
+      },
+      "signalsOnly": {
+        "positionMae": 2.0,
+        "top3Hits": 1,
+        "poleHit": 0,
+        "gapMae": 0.26668536884355104,
+        "ndcg": 0.9679024020153735,
+        "samples": 10
+      },
+      "catboostOnly": {
+        "positionMae": 1.9090909090909092,
+        "top3Hits": 1,
+        "poleHit": 0,
+        "gapMae": 0.27551652812559896,
+        "ndcg": 0.967546959011975,
+        "samples": 10
+      },
+      "selected": {
+        "positionMae": 2.0,
+        "top3Hits": 1,
+        "poleHit": 0,
+        "gapMae": 0.26668536884355104,
+        "ndcg": 0.9679024020153735,
+        "samples": 10
+      }
+    },
+    {
+      "key": 1292,
+      "name": "Netherlands",
+      "location": "Zandvoort",
+      "trainingEvents": 8,
+      "blendWeight": 0,
+      "previous": {
+        "positionMae": 1.5454545454545454,
+        "poleTimeError": 0.8888905492765531,
+        "actualPole": 71.163,
+        "top3Hits": 3,
+        "positions": {}
+      },
+      "signalsOnly": {
+        "positionMae": 1.8181818181818181,
+        "top3Hits": 2,
+        "poleHit": 0,
+        "gapMae": 0.20753546147755664,
+        "ndcg": 0.9815938937520962,
+        "samples": 10
+      },
+      "catboostOnly": {
+        "positionMae": 1.5454545454545454,
+        "top3Hits": 2,
+        "poleHit": 0,
+        "gapMae": 0.194009718023146,
+        "ndcg": 0.9826100228974862,
+        "samples": 10
+      },
+      "selected": {
+        "positionMae": 1.8181818181818181,
+        "top3Hits": 2,
+        "poleHit": 0,
+        "gapMae": 0.20753546147755664,
+        "ndcg": 0.9815938937520962,
+        "samples": 10
+      }
+    },
+    {
+      "key": 1293,
+      "name": "Italy",
+      "location": "Monza",
+      "trainingEvents": 9,
+      "blendWeight": 0,
+      "previous": {
+        "positionMae": 2.3636363636363638,
+        "poleTimeError": 0.32764354768755766,
+        "actualPole": 81.786,
+        "top3Hits": 1,
+        "positions": {}
+      },
+      "signalsOnly": {
+        "positionMae": 2.1818181818181817,
+        "top3Hits": 1,
+        "poleHit": 0,
+        "gapMae": 0.23675395046502032,
+        "ndcg": 0.9525280651477157,
+        "samples": 10
+      },
+      "catboostOnly": {
+        "positionMae": 2.727272727272727,
+        "top3Hits": 1,
+        "poleHit": 0,
+        "gapMae": 0.26400304440482136,
+        "ndcg": 0.9643564011146535,
+        "samples": 10
+      },
+      "selected": {
+        "positionMae": 2.1818181818181817,
+        "top3Hits": 1,
+        "poleHit": 0,
+        "gapMae": 0.23675395046502032,
+        "ndcg": 0.9525280651477157,
+        "samples": 10
+      }
+    },
+    {
+      "key": 1294,
+      "name": "Spain",
+      "location": "Madrid",
+      "trainingEvents": 10,
+      "blendWeight": 0,
+      "previous": {
+        "positionMae": 2.75,
+        "poleTimeError": 0.09517625738594404,
+        "actualPole": 91.824,
+        "top3Hits": 1,
+        "positions": {}
+      },
+      "signalsOnly": {
+        "positionMae": 2.4,
+        "top3Hits": 1,
+        "poleHit": 0,
+        "gapMae": 0.3086008316659271,
+        "ndcg": 0.9638428912585639,
+        "samples": 10
+      },
+      "catboostOnly": {
+        "positionMae": 2.0,
+        "top3Hits": 1,
+        "poleHit": 0,
+        "gapMae": 0.19752646892740594,
+        "ndcg": 0.9738344337259653,
+        "samples": 10
+      },
+      "selected": {
+        "positionMae": 2.4,
+        "top3Hits": 1,
+        "poleHit": 0,
+        "gapMae": 0.3086008316659271,
+        "ndcg": 0.9638428912585639,
+        "samples": 10
+      }
+    },
+    {
+      "key": 1295,
+      "name": "Azerbaijan",
+      "location": "Baku",
+      "trainingEvents": 11,
+      "blendWeight": 0,
+      "previous": {
+        "positionMae": 3.3636363636363638,
+        "poleTimeError": 0.5759324585897758,
+        "actualPole": 102.526,
+        "top3Hits": 2,
+        "positions": {}
+      },
+      "signalsOnly": {
+        "positionMae": 2.909090909090909,
+        "top3Hits": 2,
+        "poleHit": 1,
+        "gapMae": 0.7325420367204766,
+        "ndcg": 0.9488349050818426,
+        "samples": 10
+      },
+      "catboostOnly": {
+        "positionMae": 3.1818181818181817,
+        "top3Hits": 1,
+        "poleHit": 1,
+        "gapMae": 0.7438515415512461,
+        "ndcg": 0.9554848729194263,
+        "samples": 10
+      },
+      "selected": {
+        "positionMae": 2.909090909090909,
+        "top3Hits": 2,
+        "poleHit": 1,
+        "gapMae": 0.7325420367204766,
+        "ndcg": 0.9488349050818426,
+        "samples": 10
+      }
+    },
+    {
+      "key": 1308,
+      "name": "Bahrain",
+      "location": "Kuala Lumpur",
+      "trainingEvents": 12,
+      "blendWeight": 0,
+      "previous": {
+        "positionMae": 3.090909090909091,
+        "poleTimeError": 0.09143738301658288,
+        "actualPole": 95.13,
+        "top3Hits": 0,
+        "positions": {}
+      },
+      "signalsOnly": {
+        "positionMae": 3.090909090909091,
+        "top3Hits": 0,
+        "poleHit": 0,
+        "gapMae": 0.552160480821992,
+        "ndcg": 0.9549609949381644,
+        "samples": 10
+      },
+      "catboostOnly": {
+        "positionMae": 2.5454545454545454,
+        "top3Hits": 2,
+        "poleHit": 0,
+        "gapMae": 0.5333704014100319,
+        "ndcg": 0.977530977745235,
+        "samples": 10
+      },
+      "selected": {
+        "positionMae": 3.090909090909091,
+        "top3Hits": 0,
+        "poleHit": 0,
+        "gapMae": 0.552160480821992,
+        "ndcg": 0.9549609949381644,
+        "samples": 10
+      }
+    },
+    {
+      "key": 1296,
+      "name": "Singapore",
+      "location": "Marina Bay",
+      "trainingEvents": 13,
+      "blendWeight": 0,
+      "previous": {
+        "positionMae": 2,
+        "poleTimeError": 0.19936026895683767,
+        "actualPole": 91.373,
+        "top3Hits": 1,
+        "positions": {}
+      },
+      "signalsOnly": {
+        "positionMae": 2.761904761904762,
+        "top3Hits": 1,
+        "poleHit": 0,
+        "gapMae": 0.29084887399524295,
+        "ndcg": 0.9432553759807664,
+        "samples": 10
+      },
+      "catboostOnly": {
+        "positionMae": 2.1904761904761907,
+        "top3Hits": 1,
+        "poleHit": 0,
+        "gapMae": 0.20935444664080238,
+        "ndcg": 0.9451851339114536,
+        "samples": 10
+      },
+      "selected": {
+        "positionMae": 2.761904761904762,
+        "top3Hits": 1,
+        "poleHit": 0,
+        "gapMae": 0.29084887399524295,
+        "ndcg": 0.9432553759807664,
+        "samples": 10
+      }
+    },
+    {
+      "key": 1297,
+      "name": "United States",
+      "location": "Austin",
+      "trainingEvents": 14,
+      "blendWeight": 1,
+      "previous": {
+        "positionMae": 1.4545454545454546,
+        "poleTimeError": 0.36009326513467954,
+        "actualPole": 94.035,
+        "top3Hits": 1,
+        "positions": {}
+      },
+      "signalsOnly": {
+        "positionMae": 1.4545454545454546,
+        "top3Hits": 2,
+        "poleHit": 0,
+        "gapMae": 0.40743131565284446,
+        "ndcg": 0.9811785003364085,
+        "samples": 9
+      },
+      "catboostOnly": {
+        "positionMae": 1.1818181818181819,
+        "top3Hits": 2,
+        "poleHit": 1,
+        "gapMae": 0.3983355797858628,
+        "ndcg": 0.9923113555625859,
+        "samples": 9
+      },
+      "selected": {
+        "positionMae": 1.1818181818181819,
+        "top3Hits": 2,
+        "poleHit": 1,
+        "gapMae": 0.3983355797858628,
+        "ndcg": 0.9923113555625859,
+        "samples": 9
+      }
+    }
+  ],
+  "latestValidation": {
+    "events": 11,
+    "positionMae": 2.097363242817788,
+    "top3Rate": 0.45454545454545453,
+    "gapMae": 0.3219046660877246,
+    "ndcg": 0.9685086219086798,
+    "samples": 108
+  },
+  "latestSelection": {
+    "positionMae": 2.0173160173160176,
+    "top3Rate": 0.42424242424242425,
+    "score": 2.4491341991341993,
+    "gapMae": 0.30887435475285163,
+    "ndcg": 0.9719819989681021,
+    "samples": 108,
+    "events": 11,
+    "improvement": 0.08211334120424985,
+    "baseline": {
+      "positionMae": 2.12215663124754,
+      "top3Rate": 0.45454545454545453,
+      "score": 2.531247540338449,
+      "gapMae": 0.3227315511665412,
+      "ndcg": 0.9674965441608454,
+      "samples": 108
+    },
+    "reason": "validated_improvement"
+  }
+}

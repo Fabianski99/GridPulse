@@ -6,6 +6,9 @@
   "scripts": {
     "test": "node --test tests/*.test.js",
     "benchmark:qualy": "node scripts/benchmark-qualy.mjs",
+    "qualy:collect": "node scripts/qualy-data.mjs",
+    "qualy:dataset": "node scripts/export-qualy-dataset.mjs",
+    "qualy:verify": "node scripts/verify-qualy-model.mjs",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",

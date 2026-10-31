@@ -45,3 +45,74 @@ export function normalizePredictedGaps(rows) {
   const minimum = Math.min(...valid.map(row => row.predictedGap));
   return valid.map(row => ({...row, predictedGap: Math.min(4.5, Math.max(0, row.predictedGap - minimum))}));
 }
+
+// A tyre stint can contain several pit exits. Reconstruct actual on-track runs.
+export function practiceRunMetadata(laps, raceControl = []) {
+  const deleted = new Set();
+  // Race-control lap_number describes the race lap, NOT necessarily the deleted
+  // practice lap. Resolve the explicit car and lap in the official message.
+  for (const item of [...raceControl].sort((a,b)=>Date.parse(a.date)-Date.parse(b.date))) {
+    const message=item.message || '';
+    if (!/DELETED|REINSTATED/i.test(message)) continue;
+    const car=message.match(/\bCAR\s+(\d+)\b/i);
+    const lap=message.match(/\bLAP\s+(\d+)\b/i);
+    if (!car || !lap) continue;
+    const key=`${Number(car[1])}:${Number(lap[1])}`;
+    if (/REINSTATED/i.test(message)) deleted.delete(key);
+    else deleted.add(key);
+  }
+  const groups = new Map();
+  for (const lap of laps || []) {
+    if (!groups.has(Number(lap.driver_number))) groups.set(Number(lap.driver_number), []);
+    groups.get(Number(lap.driver_number)).push(lap);
+  }
+  const result = new Map();
+  for (const [driver, driverLaps] of groups) {
+    const ordered = [...driverLaps].sort((a,b)=>a.lap_number-b.lap_number);
+    const runs=[];
+    let run=[];
+    for (const lap of ordered) {
+      const previous=run.at(-1);
+      const elapsed=previous ? (Date.parse(lap.date_start)-Date.parse(previous.date_start))/1000 : 0;
+      const gap=previous && Number.isFinite(previous.lap_duration) && elapsed>previous.lap_duration+90;
+      if (run.length && (lap.is_pit_out_lap || gap)) { runs.push(run); run=[]; }
+      run.push(lap);
+    }
+    if (run.length) runs.push(run);
+    runs.forEach((items,index)=> {
+      const next=runs[index+1]?.[0];
+      const inLap=next?.is_pit_out_lap && Number(next.lap_number)===Number(items.at(-1).lap_number)+1
+        ? items.at(-1) : null;
+      const timed=items.filter(lap=>!lap.is_pit_out_lap && lap!==inLap &&
+        Number.isFinite(lap.lap_duration) && lap.lap_duration>=35 && lap.lap_duration<=240);
+      for (const lap of items) result.set(`${driver}:${lap.lap_number}`, {
+        runId:`${driver}:${index}`,runLength:timed.length,
+        excluded:lap===inLap || deleted.has(`${driver}:${lap.lap_number}`),
+      });
+    });
+  }
+  return result;
+}
+
+export function weatherSummary(rows = [], cutoff = Infinity) {
+  const usable=rows.filter(r=>Date.parse(r.date)<=cutoff);
+  const med = key => {
+    const values=usable.map(r=>r[key]).filter(v=>typeof v==='number' && Number.isFinite(v)).sort((a,b)=>a-b);
+    if (!values.length) return null;
+    const mid=Math.floor(values.length/2);
+    return values.length%2 ? values[mid] : (values[mid-1]+values[mid])/2;
+  };
+  const rain=usable.map(r=>r.rainfall).filter(v=>v===0 || v===1);
+  return {trackTemperature:med('track_temperature'),airTemperature:med('air_temperature'),
+    windSpeed:med('wind_speed'),humidity:med('humidity'),
+    rainShare:rain.length ? rain.reduce((s,v)=>s+v,0)/rain.length : null,
+    samples:usable.length};
+}
+
+export function sprintQualifyingBefore(meeting, cutoff = Infinity) {
+  const qualifying=(meeting.sessions || []).find(s=>s.session_name==='Qualifying');
+  const before=Math.min(cutoff,Date.parse(qualifying?.date_start));
+  return (meeting.sessions || []).filter(s=>/sprint/i.test(s.session_name) &&
+    /qualifying|shootout/i.test(s.session_name) && !s.is_cancelled && Date.parse(s.date_end)<before)
+    .sort((a,b)=>Date.parse(b.date_end)-Date.parse(a.date_end))[0] || null;
+}

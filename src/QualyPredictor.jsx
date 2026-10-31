@@ -157,7 +157,7 @@ export default function QualyPredictor() {
         selectedMeeting.year
       );
 
-      setProgress("Validando tiempos y Pairwise Ranker…");
+      setProgress("Comparando modelos y aplicando el ranking validado…");
 
       const args = [
         targetBundle,
@@ -208,7 +208,7 @@ export default function QualyPredictor() {
         <div className="qualy-model-chip">
           <span>Modelo</span>
           <strong>Selección automática</strong>
-          <small>Baseline · Ridge · Gradient Boosting · Ensemble · Pairwise Ranker</small>
+          <small>CatBoost · Forma reciente · Modelos de tiempos</small>
         </div>
       </section>
 
@@ -322,7 +322,7 @@ export default function QualyPredictor() {
               <span>Índice de evidencia</span>
               <strong>{prediction.confidence}%</strong>
               <i><b style={{ width: prediction.confidence + "%" }} /></i>
-              <small>No es una probabilidad de acierto · {prediction.validation.events} GP de prueba fuera de selección</small>
+              <small>No es una probabilidad de acierto · {prediction.validation.events} GP históricos de evaluación</small>
             </article>
           </section>
 
@@ -354,15 +354,26 @@ export default function QualyPredictor() {
               <span>Lectura del modelo</span>
               <strong>{prediction.selectedModelLabel}</strong>
               <small>
-                Elegido por validación temporal · {prediction.qualyPriorCoverage} pilotos con prior de qualy
-                {prediction.rankerActive
+                {prediction.packagedRanker
+                  ? "Entrenado con " + prediction.packagedRanker.trainingEvents + " GP anteriores · CatBoost " + Math.round(prediction.packagedRanker.weight * 100) + "%"
+                  : "Elegido por validación temporal · " + prediction.qualyPriorCoverage + " pilotos con prior de qualy"}
+                {!prediction.packagedRanker && prediction.rankerActive
                   ? (prediction.rankValidation.mode === "recent_form" ? " · Forma reciente " : " · Pairwise ") +
                     Math.round(prediction.rankerWeight * 100) +
                     "%" + (prediction.rankerPairs ? " · " + prediction.rankerPairs + " pares" : "")
                   : ""}
+                {prediction.packagedRanker ? " · Actualizado hasta " + new Date(prediction.packagedRanker.trainedThrough).toLocaleDateString("es-CL") : ""}
               </small>
             </article>
           </section>
+
+          <p className="qualy-disclaimer">
+            Acceso gratuito: datos disponibles al menos 30 minutos después de cada sesión.
+            {prediction.conditions?.samples > 0
+              ? prediction.packagedRanker ? " Clima de prácticas incluido en CatBoost." : " Datos meteorológicos de prácticas disponibles."
+              : " Sin datos meteorológicos suficientes."}
+            {prediction.sprintQualifyingUsed ? " Sprint Qualifying incluida en el ranking." : ""}
+          </p>
 
           {prediction.backtest && (
             <section className="qualy-backtest">

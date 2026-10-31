@@ -14,6 +14,7 @@ globalThis.fetch = async input => {
   if (url.startsWith('/api/openf1')) {
     const query = new URL(url, 'https://local.invalid').searchParams;
     const endpoint = query.get('endpoint'); query.delete('endpoint');
+    query.delete('public_only');
     url = `https://api.openf1.org/v1/${endpoint}?${query}`;
   }
   const file = new URL(Buffer.from(url).toString('base64url')+'.json', cacheDir);

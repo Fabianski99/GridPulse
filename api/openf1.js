@@ -122,7 +122,7 @@ export default async function handler(
 
     incomingUrl.searchParams.forEach(
       (value, key) => {
-        if (key !== "endpoint") {
+        if (key !== "endpoint" && key !== "public_only") {
           target.searchParams.append(
             key,
             value
@@ -131,8 +131,8 @@ export default async function handler(
       }
     );
 
-    const token =
-      await getAccessToken();
+    const token = incomingUrl.searchParams.get("public_only") === "1"
+      ? null : await getAccessToken();
 
     const headers = {
       Accept: "application/json",

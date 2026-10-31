@@ -1,4 +1,5 @@
-import { matchedTrackEvolution, normalizePredictedGaps } from "./qualySignals.js";
+import { matchedTrackEvolution, normalizePredictedGaps, practiceRunMetadata, weatherSummary, sprintQualifyingBefore } from "./qualySignals.js";
+import {applyPackagedRanker,selectSnapshot} from "./qualyRanker.js";
 
 const OPENF1 = "/api/openf1";
 const JOLPICA = "https://api.jolpi.ca/ergast/f1";
@@ -216,7 +217,7 @@ async function openF1(endpoint, params, optional) {
   const query = createQuery(params);
   const url =
     OPENF1 +
-    "?endpoint=" +
+    "?public_only=1&endpoint=" +
     encodeURIComponent(endpoint) +
     (query ? "&" + query : "");
   const cached = RESPONSE_CACHE.get(url);
@@ -685,7 +686,7 @@ function practicesBeforeQualy(meeting, target = false) {
         session.session_type === "Practice" &&
         !session.is_cancelled &&
         new Date(session.date_end).getTime() < qualifyingStart &&
-        (!target || new Date(session.date_end).getTime() <= Date.now())
+        (!target || new Date(session.date_end).getTime() + 30 * 60000 <= Date.now())
     )
     .sort((a, b) => new Date(a.date_end) - new Date(b.date_end));
 }
@@ -738,7 +739,9 @@ function estimateTrackEvolution(laps, session, stints = []) {
   return matchedTrackEvolution(laps, stints, session);
 }
 
-function analyzePracticeSession(session, laps, stints, drivers) {
+function analyzePracticeSession(session, laps, stints, drivers, weather = [], raceControl = []) {
+  const runs = practiceRunMetadata(laps, raceControl.filter(r=>Date.parse(r.date)<=Date.parse(session.date_end)));
+  const conditions = weatherSummary(weather, Date.parse(session.date_end));
   const driverInfo = new Map(
     (drivers || []).map((driver) => [Number(driver.driver_number), driver])
   );
@@ -752,6 +755,7 @@ function analyzePracticeSession(session, laps, stints, drivers) {
     .filter(
       (lap) =>
         !lap.is_pit_out_lap &&
+        !runs.get(`${lap.driver_number}:${lap.lap_number}`)?.excluded &&
         plausibleLapTime(lap.lap_duration) &&
         Number.isFinite(safeNumber(lap.driver_number)) &&
         Number.isFinite(safeNumber(lap.lap_number)) &&
@@ -763,7 +767,8 @@ function analyzePracticeSession(session, laps, stints, drivers) {
       const stint = stintForLap(stints, driverNumber, lapNumber);
       const start = safeNumber(stint && stint.lap_start, lapNumber);
       const end = safeNumber(stint && stint.lap_end, lapNumber);
-      const stintLength = Math.max(1, end - start + 1);
+      const run = runs.get(`${driverNumber}:${lapNumber}`);
+      const stintLength = Math.max(1, run?.runLength ?? end - start + 1);
       const tyreAge =
         safeNumber(stint && stint.tyre_age_at_start, 0) +
         Math.max(0, lapNumber - start);
@@ -780,6 +785,7 @@ function analyzePracticeSession(session, laps, stints, drivers) {
         lapDuration: Number(lap.lap_duration),
         stint,
         stintLength,
+        runId: run?.runId,
         tyreAge,
         compound: String(stint && stint.compound || "UNKNOWN").toUpperCase(),
         progress,
@@ -915,13 +921,14 @@ function analyzePracticeSession(session, laps, stints, drivers) {
 
     const shortRunConfidence = Math.min(rawShortRunConfidence,
       !qualyLap?.stint ? 0.25 : !hasQualyRun ? 0.35 :
+      qualyLap.stint.tyre_age_at_start == null ? 0.45 :
       qualyLap.compound === "HARD" ? 0.5 : qualyLap.compound === "MEDIUM" ? 0.72 : 1);
 
     const longStintGroups = new Map();
 
     ordered.forEach((lap) => {
       if (!lap.stint || lap.stintLength < 5) return;
-      const key = String(lap.stint.stint_number || lap.stint.lap_start || 0);
+      const key = lap.runId || String(lap.stint.stint_number || lap.stint.lap_start || 0);
       if (!longStintGroups.has(key)) longStintGroups.set(key, []);
       longStintGroups.get(key).push(lap);
     });
@@ -1038,6 +1045,7 @@ function analyzePracticeSession(session, laps, stints, drivers) {
 
   return {
     session,
+    conditions,
     evolution,
     byDriver,
     leaderQualy,
@@ -1055,7 +1063,7 @@ async function loadBundle(meeting, target) {
   if (!practices.length || !qualifying) {
     throw new Error(
       target
-        ? "Este GP todavía no tiene una práctica utilizable antes de clasificación."
+        ? "Este GP todavía no tiene una práctica disponible en el acceso gratuito. Espera al menos 30 minutos desde el final de la sesión."
         : "Fin de semana histórico incompleto."
     );
   }
@@ -1105,7 +1113,9 @@ async function loadBundle(meeting, target) {
       practice,
       laps,
       stints,
-      drivers
+      drivers,
+      await openF1("weather", { session_key: sessionKey }, true),
+      await openF1("race_control", { session_key: sessionKey }, true)
     );
 
     if (analysis.byDriver.size > 0) {
@@ -1122,7 +1132,7 @@ async function loadBundle(meeting, target) {
   }
 
   const qualifyingFinished =
-    new Date(qualifying.date_end).getTime() <= Date.now();
+    new Date(qualifying.date_end).getTime() + 30 * 60000 <= Date.now();
 
   const qualifyingRows =
     qualifyingFinished || !target
@@ -1143,8 +1153,13 @@ async function loadBundle(meeting, target) {
     );
   }
 
+  const sprint = sprintQualifyingBefore(meeting, target ? Date.now() - 30 * 60000 : Infinity);
+  const sprintRows = sprint
+    ? cleanResults(await openF1("session_result", { session_key: sprint.session_key }, true)) : [];
   return {
     meeting,
+    sprint,
+    sprintRows,
     practices,
     practice: latestPractice,
     practiceAnalyses: analyses,
@@ -3304,7 +3319,8 @@ function buildPrediction(
   historicalBundles,
   qualyPriors = new Map(),
   qualyHistory = [],
-  circuitReferenceBundle = null
+  circuitReferenceBundle = null,
+  options = {}
 ) {
   historicalBundles = historicalBundles.filter(bundle =>
     bundle.meeting.year === targetBundle.meeting.year &&
@@ -3317,7 +3333,10 @@ function buildPrediction(
 
   const validation = temporalValidation(training);
   const rankValidation = selectRanking(training);
-  const heldOut = validatePipeline(training);
+  const packagedCandidate = selectSnapshot(options.rankingArtifact, targetBundle);
+  const heldOut = options.diagnostics === false || packagedCandidate?.blendWeight > 0
+    ? {mae:null,positionMae:null,ndcg:null,top3Rate:null,samples:0,events:0,folds:[]}
+    : validatePipeline(training);
   Object.assign(validation, heldOut);
   Object.assign(rankValidation, {
     positionMae: heldOut.positionMae, ndcg: heldOut.ndcg, top3Rate: heldOut.top3Rate,
@@ -3436,6 +3455,20 @@ function buildPrediction(
     };
   });
 
+  const packaged = options.rankingArtifact
+    ? applyPackagedRanker(predictions, targetBundle, options.rankingArtifact)
+    : {rows:predictions,active:false,snapshot:null};
+  predictions = packaged.rows;
+  if (packaged.active) {
+    const metric = packaged.snapshot.validation;
+    Object.assign(rankValidation,{positionMae:metric.positionMae,top3Rate:metric.top3Rate,ndcg:metric.ndcg});
+    Object.assign(validation,{mae:metric.gapMae,samples:metric.samples,events:metric.events});
+  } else if (packagedCandidate?.blendWeight > 0 && options.diagnostics !== false) {
+    // A corrupt artifact must not silently remove the fallback's diagnostics.
+    const fallbackMetrics = validatePipeline(training);
+    Object.assign(validation, fallbackMetrics);
+    Object.assign(rankValidation,{positionMae:fallbackMetrics.positionMae,top3Rate:fallbackMetrics.top3Rate,ndcg:fallbackMetrics.ndcg});
+  }
   const targetPractice = practiceMetrics(targetBundle);
 
   if (
@@ -3633,11 +3666,18 @@ function buildPrediction(
       ) * 100
     ),
     0,
-    heldOut.events < 3 ? 50 : 92
+    validation.events < 3 ? 50 : 92
   );
 
   return {
     predictions,
+    packagedRanker: packaged.active ? {
+      algorithm:"CatBoost YetiRank",weight:packaged.snapshot.blendWeight,
+      trainingEvents:packaged.snapshot.trainingEvents,trainedThrough:packaged.snapshot.trainedThrough,
+      validationEvents:packaged.snapshot.validation.events,
+    } : null,
+    conditions: targetBundle.practiceAnalyses?.at(-1)?.conditions || null,
+    sprintQualifyingUsed: packaged.active && Boolean(targetBundle.sprintRows?.length),
     validation,
     rankValidation,
     backtest,
@@ -3660,8 +3700,8 @@ function buildPrediction(
         : training.rows.length,
     selectedModel: validation.winner,
     selectedModelLabel:
-      modelLabel(validation.winner) +
-      (rankValidation.active
+      (packaged.active ? "CatBoost ranking + " : "") + modelLabel(validation.winner) +
+      (rankValidation.active && !packaged.active
         ? rankValidation.mode === "recent_form" ? " + Forma reciente" : " + Pairwise"
         : ""),
     modelMetrics: validation.metrics,

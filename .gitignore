@@ -25,6 +25,8 @@ dist-ssr
 
 .fastf1-cache/
 .qualy-cache/
+.venv/
+catboost_info/
 node_modules/
 dist/
 .DS_Store
